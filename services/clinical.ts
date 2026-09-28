@@ -1,6 +1,14 @@
 export type Role = "Médico" | "Administrador"
 export type UserAccount = { id: string; email: string; name: string; role: Role; active: boolean }
 
+// EXCLUSIVO DEL MODO SIMULADO. Deducir el rol del texto del correo no es una
+// autorización: cualquiera puede escribir "admin" en el campo. En la Fase 15 el
+// rol vendrá siempre de GET /api/v1/me (token verificado por el backend) y esta
+// función se elimina; la interfaz nunca debe decidir el rol por su cuenta.
+export function resolveSimulatedRole(email: string): Role {
+  return email.toLowerCase().includes("admin") ? "Administrador" : "Médico"
+}
+
 let simulatedUsers: readonly UserAccount[] = [
   { id: "u-001", email: "ana.morales@gynfem.test", name: "Dra. Ana Morales", role: "Médico", active: true },
   { id: "u-002", email: "admin@gynfem.test", name: "Administración GynFem", role: "Administrador", active: true },
