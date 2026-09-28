@@ -6,7 +6,6 @@ import { clinicalDisclaimer, createUser, evaluateClinical, getClinicalFields, ge
 import { formatProbability } from "@/lib/format"
 import { userAdminErrorMessage } from "@/lib/user-admin-errors"
 import { canSubmitAssessment, getFieldStatus, hasPressureConflict } from "@/lib/clinical-validation"
-import "./globals.css"
 
 type Screen = "login" | "patients" | "patient" | "assessment" | "quick" | "users";
 const Banner = () => <div className="bg-[#173d43] px-4 py-2 text-center text-xs font-bold tracking-wide text-white"><span className="mr-2 inline-flex items-center gap-1"><Activity className="size-3" /> DATOS SIMULADOS</span><span className="font-normal text-[#c7dfe0]">{clinicalDisclaimer}</span></div>
