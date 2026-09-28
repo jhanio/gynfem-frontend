@@ -15,7 +15,9 @@ let simulatedUsers: readonly UserAccount[] = [
   { id: "u-003", email: "soporte@gynfem.test", name: "Soporte clínico", role: "Médico", active: true },
 ]
 
-export async function listUsers(page = 1, pageSize = 6) {
+export const USERS_PAGE_SIZE = 6
+
+export async function listUsers(page = 1, pageSize = USERS_PAGE_SIZE) {
   await new Promise((r) => setTimeout(r, 150))
   const start = (page - 1) * pageSize
   return { users: simulatedUsers.slice(start, start + pageSize), total: simulatedUsers.length }
