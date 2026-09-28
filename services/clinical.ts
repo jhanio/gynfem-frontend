@@ -67,12 +67,4 @@ export async function searchPatients(query: string, mode: "document" | "name") {
 export async function getMeasurements() { await new Promise((r) => setTimeout(r, 180)); return [{ id: "m-001", date: "12 sep. 2026, 10:42 a. m.", risk: "Moderado" as const, status: "Vigente" as const }, { id: "m-002", date: "30 ago. 2026, 09:15 a. m.", risk: "Bajo" as const, status: "Vigente" as const }] }
 export function maskDocument(n: string) { return `*****${n.slice(-3)}` }
 
-// Mantiene la firma disponible para consumidores existentes.
-export async function getPatient(id: string) { return patients.find((p) => p.id === id) ?? null }
-export { simulatedFields }
-export const clinicalFields = simulatedFields
 export const clinicalDisclaimer = "Este resultado es apoyo a la decisión clínica y no sustituye el criterio profesional."
-export type { ClinicalField as AssessmentField }
-
-// Valores de ejemplo para la simulación, no usados por componentes.
-export const simulatedExampleValues = { age: 32, temperature: 36.7, heartRate: 78, systolic: 118, diastolic: 76, bmi: 24.1, hba1c: 5.4, fastingGlucose: 92 }
