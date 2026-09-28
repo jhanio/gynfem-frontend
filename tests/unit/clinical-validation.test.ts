@@ -51,3 +51,9 @@ describe("canSubmitAssessment", () => {
     expect(canSubmitAssessment(pressureFields, values)).toBe(false)
   })
 })
+
+describe("canSubmitAssessment sin campos cargados (N2)", () => {
+  test("no permite enviar mientras la lista de campos está vacía", () => {
+    expect(canSubmitAssessment([], {})).toBe(false)
+  })
+})
