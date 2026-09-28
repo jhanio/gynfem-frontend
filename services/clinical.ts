@@ -1,7 +1,7 @@
 export type Role = "Médico" | "Administrador"
 export type UserAccount = { id: string; email: string; name: string; role: Role; active: boolean }
 
-const simulatedUsers: UserAccount[] = [
+let simulatedUsers: readonly UserAccount[] = [
   { id: "u-001", email: "ana.morales@gynfem.test", name: "Dra. Ana Morales", role: "Médico", active: true },
   { id: "u-002", email: "admin@gynfem.test", name: "Administración GynFem", role: "Administrador", active: true },
   { id: "u-003", email: "soporte@gynfem.test", name: "Soporte clínico", role: "Médico", active: true },
@@ -17,7 +17,7 @@ export function createUser(input: { email: string; name: string; role: Role; pas
   if (simulatedUsers.some((user) => user.email.toLowerCase() === input.email.trim().toLowerCase())) throw new Error("EMAIL_EXISTS")
   if (input.password.length < 12 || input.password.length > 72) throw new Error("PASSWORD_REJECTED")
   const user = { id: `u-${Date.now()}`, email: input.email.trim(), name: input.name.trim(), role: input.role, active: true }
-  simulatedUsers.push(user)
+  simulatedUsers = [...simulatedUsers, user]
   return user
 }
 
@@ -25,8 +25,9 @@ export function updateUser(id: string, changes: Partial<Pick<UserAccount, "name"
   const user = simulatedUsers.find((item) => item.id === id)
   if (!user) throw new Error("USER_NOT_FOUND")
   if (changes.active === false && user.role === "Administrador" && simulatedUsers.filter((item) => item.role === "Administrador" && item.active).length === 1) throw new Error("LAST_ADMIN")
-  Object.assign(user, changes)
-  return user
+  const updated = { ...user, ...changes }
+  simulatedUsers = simulatedUsers.map((item) => (item.id === id ? updated : item))
+  return updated
 }
 
 export type Patient = { id: string; documentType: "DNI" | "CE" | "Pasaporte"; documentNumber: string; names: string; surnames: string; active: boolean }
