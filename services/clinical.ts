@@ -45,8 +45,8 @@ export type RiskResult = { risk: "Bajo" | "Moderado" | "Alto"; probabilities: Re
 
 const patients: Patient[] = [
   { id: "p-001", documentType: "DNI", documentNumber: "00000001", names: "Paciente de Ejemplo", surnames: "García Quispe", active: true },
-  { id: "p-002", documentType: "DNI", documentNumber: "45678901", names: "María Elena", surnames: "Salazar Torres", active: true },
-  { id: "p-003", documentType: "CE", documentNumber: "001234567", names: "Ana Lucía", surnames: "Flores Mendoza", active: true },
+  { id: "p-002", documentType: "DNI", documentNumber: "00000002", names: "María Elena", surnames: "Salazar Torres", active: true },
+  { id: "p-003", documentType: "CE", documentNumber: "000000003", names: "Ana Lucía", surnames: "Flores Mendoza", active: true },
 ]
 
 // Simulación aislada: los valores clínicos viven únicamente en esta capa de servicios.
