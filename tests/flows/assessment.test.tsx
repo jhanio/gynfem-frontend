@@ -1,0 +1,86 @@
+import { screen } from "@testing-library/react"
+import { describe, expect, test } from "vitest"
+import { MEDICO_EMAIL, loginAs, openPatientFile, renderApp } from "./helpers"
+
+const IN_RANGE: Record<string, string> = {
+  "Edad": "32", "Temperatura": "36.7", "Frecuencia cardíaca": "78", "Presión sistólica": "118",
+  "Presión diastólica": "76", "IMC": "24.1", "Hemoglobina glicosilada": "5.4", "Glucosa en ayunas": "92",
+}
+
+type User = Awaited<ReturnType<typeof renderApp>>
+
+async function openQuickAssessment() {
+  const user = await renderApp()
+  await loginAs(user, MEDICO_EMAIL)
+  await user.click(await screen.findByRole("button", { name: "Evaluación rápida" }))
+  await screen.findByLabelText("Edad")
+  return user
+}
+
+async function fill(user: User, values: Record<string, string>) {
+  for (const [label, value] of Object.entries(values)) {
+    const input = screen.getByLabelText(label)
+    await user.clear(input)
+    await user.type(input, value)
+  }
+}
+
+const submitButton = () => screen.getByRole("button", { name: /Calcular riesgo|Calculando/ })
+
+describe("evaluación de riesgo (F5)", () => {
+  test("el botón se habilita solo con todos los campos completos y válidos", async () => {
+    const user = await openQuickAssessment()
+    expect(submitButton()).toBeDisabled()
+    const allButAge = Object.fromEntries(Object.entries(IN_RANGE).filter(([label]) => label !== "Edad"))
+    await fill(user, allButAge)
+    expect(submitButton()).toBeDisabled()
+    await fill(user, { Edad: "32" })
+    expect(submitButton()).toBeEnabled()
+  })
+
+  test("un valor imposible se marca y bloquea el envío", async () => {
+    const user = await openQuickAssessment()
+    await fill(user, { ...IN_RANGE, Edad: "130" })
+    expect(screen.getByLabelText("Edad")).toHaveAttribute("aria-invalid", "true")
+    expect(screen.getByText(/Valor imposible/)).toBeInTheDocument()
+    expect(submitButton()).toBeDisabled()
+  })
+
+  test("un valor fuera del rango de entrenamiento avisa pero permite enviar", async () => {
+    const user = await openQuickAssessment()
+    await fill(user, { ...IN_RANGE, Edad: "80" })
+    expect(screen.getByLabelText("Edad")).toHaveAttribute("aria-invalid", "false")
+    expect(screen.getByText(/Fuera del rango de entrenamiento/)).toBeInTheDocument()
+    expect(submitButton()).toBeEnabled()
+  })
+
+  test("una diastólica mayor o igual que la sistólica muestra una alerta y bloquea el envío", async () => {
+    const user = await openQuickAssessment()
+    await fill(user, { ...IN_RANGE, "Presión diastólica": "118" })
+    expect(screen.getByRole("alert")).toHaveTextContent("La presión diastólica debe ser menor que la sistólica")
+    expect(submitButton()).toBeDisabled()
+  })
+
+  test("el resultado muestra porcentajes redondeados y el descargo clínico", async () => {
+    const user = await openQuickAssessment()
+    await fill(user, { ...IN_RANGE, "Edad": "80", "Temperatura": "39.5" })
+    await user.click(submitButton())
+    expect(await screen.findByRole("heading", { name: "Riesgo Moderado" }, { timeout: 2000 })).toBeInTheDocument()
+    expect(screen.getByText(/Bajo 24% · Moderado 58% · Alto 18%/)).toBeInTheDocument()
+    expect(screen.queryByText(/57\.99/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Extrapolación: Edad, Temperatura/)).toBeInTheDocument()
+    expect(screen.getAllByText(/no sustituye el criterio profesional/).length).toBeGreaterThan(1)
+  })
+})
+
+describe("texto honesto sobre el registro (F6, hallazgo 5)", () => {
+  test("con paciente, no promete registrar la evaluación en la ficha", async () => {
+    const user = await renderApp()
+    await loginAs(user, MEDICO_EMAIL)
+    await openPatientFile(user)
+    await user.click(screen.getByRole("button", { name: "Nueva evaluación" }))
+    await screen.findByLabelText("Edad")
+    expect(screen.queryByText(/Se registrará/)).not.toBeInTheDocument()
+    expect(screen.getByText(/modo simulado la evaluación no se guarda/)).toBeInTheDocument()
+  })
+})
