@@ -17,6 +17,8 @@ export function hasPressureConflict(values: AssessmentValues): boolean {
 }
 
 export function canSubmitAssessment(fields: readonly ClinicalField[], values: AssessmentValues): boolean {
+  // Sin campos cargados, every() sería true y se evaluaría sin datos.
+  if (fields.length === 0) return false
   const allValid = fields.every((f) => {
     const status = getFieldStatus(f, values[f.key])
     return status !== "empty" && status !== "impossible"
