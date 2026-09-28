@@ -1,0 +1,25 @@
+import type { ClinicalField } from "@/services/clinical"
+
+export type FieldStatus = "empty" | "impossible" | "warning" | "ok"
+export type AssessmentValues = Record<string, string | undefined>
+
+export function getFieldStatus(field: ClinicalField, raw: string | undefined): FieldStatus {
+  if (!raw) return "empty"
+  const value = Number(raw)
+  if (value < field.hardMin || value > field.hardMax) return "impossible"
+  if (value < field.min || value > field.max) return "warning"
+  return "ok"
+}
+
+export function hasPressureConflict(values: AssessmentValues): boolean {
+  if (!values.systolic || !values.diastolic) return false
+  return Number(values.diastolic) >= Number(values.systolic)
+}
+
+export function canSubmitAssessment(fields: readonly ClinicalField[], values: AssessmentValues): boolean {
+  const allValid = fields.every((f) => {
+    const status = getFieldStatus(f, values[f.key])
+    return status !== "empty" && status !== "impossible"
+  })
+  return allValid && !hasPressureConflict(values)
+}
