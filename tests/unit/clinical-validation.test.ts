@@ -57,3 +57,13 @@ describe("canSubmitAssessment sin campos cargados (N2)", () => {
     expect(canSubmitAssessment([], {})).toBe(false)
   })
 })
+
+describe("getFieldStatus con valores no numéricos (R4)", () => {
+  test.each(["abc", "Infinity", "-Infinity", "1e999", "NaN"])("%j es imposible", (raw) => {
+    expect(getFieldStatus(field, raw)).toBe("impossible")
+  })
+
+  test("un valor no numérico impide enviar la evaluación", () => {
+    expect(canSubmitAssessment(pressureFields, { systolic: "abc", diastolic: "80" })).toBe(false)
+  })
+})
