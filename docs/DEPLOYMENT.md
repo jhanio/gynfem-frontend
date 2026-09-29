@@ -181,7 +181,14 @@ incógnito. Debe pedir iniciar sesión en Vercel.
 
 ## 6. Verificación posterior al despliegue
 
-Repetible y de solo lectura, tras cada despliegue de producción:
+Repetible y de solo lectura, tras cada despliegue de producción.
+
+**Antes de ejecutarla, espera a que el despliegue figure como completado**
+(Vercel → *Deployments*: estado *Ready*, marcado como *Current* en producción).
+Mientras se construye, el dominio sigue sirviendo el despliegue anterior, y el
+guion mediría ese. Si un resultado no cuadra con un cambio recién hecho,
+comprueba primero la hora a la que terminó el despliegue antes de tocar ninguna
+configuración.
 
 ```bash
 npm run verify:deployment -- https://gynfem-frontend.vercel.app --connect https://gynfem-api.onrender.com,https://<project-ref>.supabase.co
@@ -259,18 +266,32 @@ que cierra CORS (`gynfem-backend/docs/DEPLOYMENT.md`, Sección 7.3).
    `GYNFEM_CORS_ORIGINS` por **exactamente** el dominio de producción:
    `https://gynfem-frontend.vercel.app`, con `https://`, en minúsculas y **sin barra
    final**. Un solo origen: ni vistas previas, ni la URL única de un
-   despliegue, ni comodines (el backend los rechaza al arrancar). Guardar:
-   Render vuelve a desplegar.
-3. **Comprobar:**
+   despliegue, ni comodines (el backend los rechaza al arrancar). Guardar con
+   la opción que **también despliega**: con «Save only» el valor queda en el
+   panel, pero el servicio sigue con el anterior.
+3. **Esperar:** Render → `gynfem-api` → *Events* debe mostrar un despliegue
+   **posterior al cambio** con estado *Deploy live*. Si aparece *Deploy failed*,
+   el valor no pasó la validación del backend y Render mantiene la versión
+   anterior: en *Logs*, `Configuración inválida` nombra la variable y el
+   motivo (espacios, barra final, mayúsculas, comillas).
+4. **Comprobar**, con tres orígenes:
 
    ```bash
-   curl -s -D - -o /dev/null -X OPTIONS https://gynfem-api.onrender.com/api/v1/health -H "Origin: https://gynfem-frontend.vercel.app" -H "Access-Control-Request-Method: GET"
+   API=https://gynfem-api.onrender.com
+   for ORIGIN in https://gynfem-frontend.vercel.app https://gynfem-frontend.invalid https://<url-de-una-vista-previa>.vercel.app; do
+     echo "== $ORIGIN"
+     curl -s -D - -o /dev/null -X OPTIONS "$API/api/v1/health" -H "Origin: $ORIGIN" -H "Access-Control-Request-Method: GET" | grep -iE "^HTTP|^access-control-allow-origin"
+   done
    ```
 
-   Debe responder `access-control-allow-origin: https://gynfem-frontend.vercel.app`.
-   Con otro `Origin` (por ejemplo, el de una vista previa) no debe aparecer esa
-   cabecera. En el plan Free de Render, la primera petición puede tardar
-   alrededor de un minuto mientras el servicio arranca.
+   | `Origin` | Resultado correcto |
+   | --- | --- |
+   | `https://gynfem-frontend.vercel.app` (producción) | `200` y `access-control-allow-origin: https://gynfem-frontend.vercel.app` |
+   | `https://gynfem-frontend.invalid` (**control negativo**: el valor anterior) | `400 Disallowed CORS origin`. **Si responde 200, el cambio no se aplicó:** el servicio sigue con la configuración antigua, aunque el panel muestre la nueva. Vuelve al paso 3 |
+   | Una vista previa | `400 Disallowed CORS origin` |
+
+   En el plan Free de Render, la primera petición puede tardar alrededor de un
+   minuto mientras el servicio arranca.
 
 ## 9. Revertir
 
