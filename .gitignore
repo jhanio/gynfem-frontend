@@ -154,3 +154,7 @@ workspace-reference/
 
 # Tipos generados por Next.js
 next-env.d.ts
+
+# Instrucciones para agentes que genera `next dev` (no se versionan)
+/AGENTS.md
+/CLAUDE.md
