@@ -28,7 +28,9 @@ obligatorio mientras sea así (lo protege una prueba).
 ## Requisitos previos
 
 - Node.js 24 (fijado en `package.json` → `engines`) y npm.
-- Para desplegar: acceso al proyecto de Vercel y al repositorio de GitHub
+- Para desplegar: la cuenta de Vercel dueña del proyecto (plan Hobby, sin
+  miembros: nadie más puede configurarlo ni revertir desde el panel) y acceso al
+  repositorio de GitHub
   (`docs/DEPLOYMENT.md`, Sección 4).
 
 ## Ejecutar en local

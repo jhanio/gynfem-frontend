@@ -15,6 +15,7 @@
 | | Valor |
 | --- | --- |
 | Plataforma | Vercel, plan **Hobby** |
+| Dueño y acceso | La cuenta Hobby **personal** del responsable del proyecto (su identificador aparece en las URLs de despliegue). Hobby no admite miembros: **solo esa cuenta** puede cambiar variables y protección, ver las vistas previas y revertir (Sección 9). Traspasarlo exige transferir el proyecto a otra cuenta o pasar a un plan de equipo |
 | Dominio de producción | **`https://gynfem-frontend.vercel.app`** (Settings → Domains) |
 | Rama de producción | `main`: cada commit en `main` despliega a producción |
 | Otras ramas | Generan despliegues de **vista previa**, protegidos (Sección 5) |
@@ -39,7 +40,19 @@ Production** (sin Preview ni Development). La plantilla comentada es
 | `NEXT_PUBLIC_SUPABASE_URL` | Sí | Autenticación desde el navegador (Fase 15) y `connect-src` | `https://<project-ref>.supabase.co`, sin barra final | Identifica el proyecto pero no da acceso a nada |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Sí | Clave de Supabase Auth para el navegador (Fase 15) | `sb_publishable_…` | Está diseñada para el navegador: RLS impide que llegue a las tablas (`gynfem-backend/docs/SECURITY.md`) |
 
-**Reglas (las fija `tests/unit/deployment-config.test.ts`):**
+**De dónde sale cada valor:**
+
+- `NEXT_PUBLIC_API_BASE_URL`: la URL pública del servicio `gynfem-api` en Render
+  (Render → `gynfem-api` → cabecera del servicio). Hoy es
+  `https://gynfem-api.onrender.com` (`gynfem-backend/docs/DEPLOYMENT.md`, Sección 1).
+- `NEXT_PUBLIC_SUPABASE_URL`: Supabase → *Project Settings → Data API* (o
+  *API*) → *Project URL*.
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Supabase → *Project Settings → API
+  Keys* → la clave **publicable** (`sb_publishable_…`), nunca la secreta.
+
+**Reglas (las fija `tests/unit/deployment-config.test.ts`, que recorre todo el
+código fuente: `app/`, `components/`, `lib/`, `services/`, `scripts/` y
+`next.config.ts`):**
 
 - Toda variable `NEXT_PUBLIC_` se **copia literalmente** en el JavaScript que
   descarga el navegador **al compilar**. Cambiar un valor exige volver a
@@ -99,12 +112,21 @@ upgrade-insecure-requests
   hashes (SRI) es experimental en Next 16. Se mitiga porque la app no inyecta
   HTML (`dangerouslySetInnerHTML`) y React escapa el contenido. **Se revisa en
   la Fase 15**, antes de que haya tokens de sesión en el navegador.
-- En `next dev` se añade `'unsafe-eval'`, que React necesita para depurar.
-  Nunca en producción.
+- En `next dev` se añade `'unsafe-eval'`, que React necesita para depurar, y
+  se omite `upgrade-insecure-requests`, porque `next dev` sirve por
+  `http://localhost`. Nunca en producción. `next start` en local sí la envía;
+  si un navegador (Safari) fuerza https contra localhost, verifica con Chrome.
 - **Fase 15:** un origen nuevo que llame el navegador entra en `connect-src`
-  mediante variable, nunca con comodín.
+  mediante variable, nunca con comodín. Las llamadas `fetch` a Render y a
+  Supabase Auth ya quedan cubiertas. Si se usa Supabase Realtime hará falta
+  `wss://<project-ref>.supabase.co` en `connect-src`, y si se sirven imágenes
+  desde Supabase Storage, su origen en `img-src`.
 
 ## 4. Configurar el proyecto en Vercel (una vez)
+
+**Requisitos:** la cuenta dueña del proyecto (Sección 1) y que la GitHub App de
+Vercel tenga acceso al repositorio `gynfem-frontend` (GitHub → *Settings →
+Applications → Vercel → Repository access*).
 
 El proyecto ya existe y está conectado a `main`. Para reproducirlo desde cero:
 *Add New → Project*, importar el repositorio de GitHub y aceptar el
@@ -162,8 +184,12 @@ incógnito. Debe pedir iniciar sesión en Vercel.
 Repetible y de solo lectura, tras cada despliegue de producción:
 
 ```bash
-npm run verify:deployment -- https://<dominio-de-produccion> --connect https://<servicio>.onrender.com,https://<project-ref>.supabase.co
+npm run verify:deployment -- https://gynfem-frontend.vercel.app --connect https://gynfem-api.onrender.com,https://<project-ref>.supabase.co
 ```
+
+`<project-ref>` es el de `NEXT_PUBLIC_SUPABASE_URL` (Sección 2). Si no lo
+tienes a mano, ejecuta el guion sin `--connect`: muestra el `connect-src` real
+para compararlo.
 
 El guion (`scripts/verify-deployment.ts`, con la lógica probada en
 `lib/deployment-checks.ts`) termina con código 1 si falla cualquier
@@ -176,11 +202,11 @@ comprobación:
 | **dominio de producción público (sin login de Vercel)** | `GET /` responde 200 sin redirigir a `vercel.com`/`sso-api`, sin 401/403, sin cookie `_vercel_jwt` y sin la página de Vercel Authentication. Es el requisito central de la fase: producción es pública |
 | cabecera X-Frame-Options … X-Robots-Tag | Cada cabecera de la Sección 3 con su valor exacto |
 | sin X-Powered-By / Server sin versión | No se anuncian el framework ni versiones |
-| CSP presente, sin comodines, sin `'unsafe-eval'`, `frame-ancestors 'none'`, `object-src 'none'` | La política de la Sección 3 |
+| CSP presente, `default-src 'self'`, `base-uri 'self'`, sin comodines, sin `'unsafe-eval'`, `frame-ancestors 'none'`, `object-src 'none'` | La política de la Sección 3 |
 | CSP connect-src exacto | Solo con `--connect`: `connect-src 'self'` más exactamente esos orígenes |
 | banner DATOS SIMULADOS / la raíz sirve el login | El HTML inicial es el login simulado |
 | ninguna pantalla clínica sin sesión | El HTML inicial no contiene ninguna pantalla clínica |
-| paquete servido sin secretos | Ningún script de `/_next/static` contiene `sb_secret_`, `service_role`, `postgres(ql)://`, variables `GYNFEM_*` ni JWT con rol distinto de `anon`. Los hallazgos se muestran recortados |
+| paquete servido sin secretos | Ni el HTML inicial (con la carga RSC en línea) ni ningún script de `/_next/static` que referencie contiene `sb_secret_`, `service_role`, `postgres(ql)://`, variables `GYNFEM_*` ni JWT con rol distinto de `anon`. Los hallazgos se muestran recortados |
 | sin mapas de código publicados | Ningún `.js.map` responde 200 |
 | ruta inexistente responde 404 / errores sin trazas ni rutas internas | La 404 no contiene `node_modules`, rutas de disco, rutas de compilación de Vercel ni líneas de traza |
 
@@ -192,9 +218,16 @@ npm run verify:deployment -- http://localhost:3000 --local
 
 `--local` omite las comprobaciones que exigen HTTPS y Vercel.
 
+Las cabeceras exigidas están escritas en `lib/deployment-checks.ts`, no se
+leen del generador: si una cabecera desaparece de `lib/security-headers.ts`, el
+guion sigue exigiéndola. Una prueba comprueba que ambas listas coinciden.
+
 **Además, a mano en el navegador:** que no haya violaciones de la CSP en la
 consola, recorrer el login simulado → Pacientes → ficha → evaluación, y
-revisar el ancho de tableta (768 px y 1024 px).
+revisar el ancho de tableta (768 px y 1024 px) **redimensionando la ventana**,
+nunca con un `iframe`, porque la app no se deja incrustar (Sección 3). En una
+vista previa, la consola mostrará además que la CSP bloquea la barra de
+herramientas de Vercel (`vercel.live`). Es esperado y no es un fallo de la app.
 
 ## 7. Qué ve un visitante sin sesión
 
@@ -209,6 +242,10 @@ revisar el ancho de tableta (768 px y 1024 px).
   (`tests/unit/simulated-data.test.ts`). Lo que protege hoy no es la sesión,
   sino que no hay datos reales ni API conectada. La autenticación real llega
   en la Fase 15.
+- Aunque no tengan URL, el **código** de todas las pantallas viaja en el
+  JavaScript que descarga cualquier visitante, como en toda aplicación de
+  página única. Por eso la seguridad de la Fase 15 no puede depender de ocultar
+  pantallas: los datos solo los debe servir la API tras verificar la sesión.
 
 ## 8. CORS en Render (una vez, tras el primer despliegue verificado)
 
@@ -227,15 +264,19 @@ que cierra CORS (`gynfem-backend/docs/DEPLOYMENT.md`, Sección 7.3).
 3. **Comprobar:**
 
    ```bash
-   curl -s -D - -o /dev/null -X OPTIONS https://<servicio>.onrender.com/api/v1/health -H "Origin: https://<dominio-de-produccion>" -H "Access-Control-Request-Method: GET"
+   curl -s -D - -o /dev/null -X OPTIONS https://gynfem-api.onrender.com/api/v1/health -H "Origin: https://gynfem-frontend.vercel.app" -H "Access-Control-Request-Method: GET"
    ```
 
-   Debe responder `access-control-allow-origin: https://<dominio-de-produccion>`.
+   Debe responder `access-control-allow-origin: https://gynfem-frontend.vercel.app`.
    Con otro `Origin` (por ejemplo, el de una vista previa) no debe aparecer esa
    cabecera. En el plan Free de Render, la primera petición puede tardar
    alrededor de un minuto mientras el servicio arranca.
 
 ## 9. Revertir
+
+El paso 1 solo lo puede hacer la cuenta dueña del proyecto en Vercel
+(Sección 1). Si no está disponible, queda únicamente el paso 2: revertir en
+`main`, lo que redespliega en unos minutos.
 
 1. **Inmediato:** en Vercel → *Deployments*, elegir el último despliegue de
    producción bueno → *Instant Rollback*, o *Promote to Production* si el panel
@@ -254,4 +295,7 @@ que cierra CORS (`gynfem-backend/docs/DEPLOYMENT.md`, Sección 7.3).
 | Login simulado sin autenticación real | Aceptado hasta la Fase 15 (Sección 7) |
 | `'unsafe-inline'` en `script-src` | Aceptado; revisar nonces o SRI en la Fase 15 |
 | Vistas previas huérfanas tras fusionar | Mitigado por la protección; su borrado es manual (Sección 5) |
+| La versión de Next queda visible en el cliente (`window.next.version`) | Aceptado. Lo publica el propio Next en su código de arranque y no se puede quitar sin parchearlo. Sí se eliminan `X-Powered-By` y la versión en `Server` (Decisión 6) |
+| Una sola persona controla Vercel | Aceptado en Hobby (Sección 1). Configuración, vistas previas e *Instant Rollback* dependen de la cuenta dueña; revertir en `main` no |
+| Hobby es para uso personal y no comercial | Revisar antes de uso clínico real (Fase 17): puede exigir un plan de pago |
 | `next dev` reescribe parte de `CLAUDE.md` | Solo el bloque entre los marcadores `nextjs-agent-rules`; conserva el resto, también con saltos de línea CRLF. Comprobado arrancando `next dev` de verdad con Next 16.3.6, y lo vigila `tests/integration/agent-rules.test.ts` (dos arranques reales). Las reglas del proyecto van fuera de los marcadores. No debe existir `AGENTS.md` (está en `.gitignore` de forma permanente): si existe **con** los marcadores, Next mantiene el bloque allí y deja de actualizar el de `CLAUDE.md` sin avisar; un `AGENTS.md` **sin** marcadores no cambia nada. En ningún caso se tocan las reglas de fuera del bloque. Detalle en la advertencia de `CLAUDE.md` |
