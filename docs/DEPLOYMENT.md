@@ -15,7 +15,7 @@
 | | Valor |
 | --- | --- |
 | Plataforma | Vercel, plan **Hobby** |
-| Dominio de producción | **PENDIENTE** — se anota aquí al verificar el despliegue |
+| Dominio de producción | **`https://gynfem-frontend.vercel.app`** (Settings → Domains) |
 | Rama de producción | `main`: cada commit en `main` despliega a producción |
 | Otras ramas | Generan despliegues de **vista previa**, protegidos (Sección 5) |
 | Configuración versionada | `vercel.json` (framework y comandos), `next.config.ts` + `lib/security-headers.ts` (cabeceras), `package.json` → `engines.node` (Node 24) |
@@ -72,6 +72,13 @@ prueba impide que se pierdan (`tests/unit/security-headers.test.ts`).
 | `Cross-Origin-Opener-Policy` | `same-origin` | Aísla la ventana de otras pestañas |
 | `X-Robots-Tag` | `noindex, nofollow` | Una herramienta clínica no aparece en buscadores |
 
+**Comprobado en vivo (Fase 14, vista previa):** un `iframe` del mismo origen con
+la app a 1024 px quedó bloqueado, con un documento de error inaccesible, mientras
+que un `iframe` de control con `srcdoc` sí era accesible. `X-Frame-Options: DENY`
+y `frame-ancestors 'none'` impiden incrustar la app incluso desde su propio
+origen. En consecuencia, las comprobaciones de ancho de pantalla se hacen
+redimensionando la ventana, nunca con un marco.
+
 Además, `poweredByHeader: false` quita `X-Powered-By: Next.js`, y
 `productionBrowserSourceMaps: false` evita publicar el código fuente.
 
@@ -114,8 +121,10 @@ versiones del panel.
 3. **Settings → Deployment Protection.** «Standard Protection» con **Vercel
    Authentication** activado. Sin *Protection Bypass for Automation*, sin
    *Shareable Links* y sin excepciones.
-4. **Settings → Security → Deployment Retention**, si el plan lo ofrece:
-   retención de las vistas previas al mínimo disponible.
+4. **Deployment Retention:** en Hobby viene activa por defecto y **no se puede
+   configurar a mano** (comprobado en la Fase 14). Por eso el borrado de las
+   vistas previas tras fusionar es manual (Sección 5, punto 4). En un plan de
+   pago: *Settings → Security → Deployment Retention*, vistas previas al mínimo.
 5. **Settings → Git.** Rama de producción: `main`.
 6. **Deployments → Redeploy** del último despliegue de producción, para que
    compile con las variables.
@@ -211,7 +220,7 @@ que cierra CORS (`gynfem-backend/docs/DEPLOYMENT.md`, Sección 7.3).
    de empezar la Fase 15.
 2. **Qué:** en Render → servicio `gynfem-api` → *Environment*, cambiar
    `GYNFEM_CORS_ORIGINS` por **exactamente** el dominio de producción:
-   `https://<proyecto>.vercel.app`, con `https://`, en minúsculas y **sin barra
+   `https://gynfem-frontend.vercel.app`, con `https://`, en minúsculas y **sin barra
    final**. Un solo origen: ni vistas previas, ni la URL única de un
    despliegue, ni comodines (el backend los rechaza al arrancar). Guardar:
    Render vuelve a desplegar.
