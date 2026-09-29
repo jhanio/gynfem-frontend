@@ -2,6 +2,9 @@
   "name": "gynfem-frontend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "verify:deployment": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-deployment.ts"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
