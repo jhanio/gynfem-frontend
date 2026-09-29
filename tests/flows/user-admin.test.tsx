@@ -28,7 +28,7 @@ async function createAccount(user: User, email: string) {
 }
 
 async function toggleRowOf(user: User, email: string) {
-  const row = screen.getByRole("cell", { name: new RegExp(email.replace(".", "\.")) }).closest("tr")!
+  const row = screen.getByRole("cell", { name: (name) => name.includes(email) }).closest("tr")!
   await user.click(within(row).getByRole("button", { name: /Desactivar|Activar/ }))
 }
 
