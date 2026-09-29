@@ -68,3 +68,20 @@ describe("administración de usuarios: mensajes de error (F7, hallazgo 7)", () =
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo completar la operación")
   })
 })
+
+describe("administración de usuarios: la tabla se actualiza (refuerza M21)", () => {
+  test("un usuario creado aparece en la tabla", async () => {
+    const user = await openUserAdmin()
+    await createAccount(user, "nueva@gynfem.test")
+    expect(await screen.findByRole("status")).toHaveTextContent("Usuario creado")
+    expect(await screen.findByRole("cell", { name: /nueva@gynfem\.test/ })).toBeInTheDocument()
+  })
+
+  test("desactivar a un usuario cambia su estado en la tabla", async () => {
+    const user = await openUserAdmin()
+    await toggleRowOf(user, "soporte@gynfem.test")
+    const row = screen.getByRole("cell", { name: /soporte@gynfem\.test/ }).closest("tr")!
+    expect(await within(row).findByRole("cell", { name: "Inactivo" })).toBeInTheDocument()
+    expect(within(row).getByRole("button", { name: "Activar" })).toBeInTheDocument()
+  })
+})
