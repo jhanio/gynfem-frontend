@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
+import { join } from "node:path"
 import { describe, expect, test } from "vitest"
 import nextConfig from "@/next.config"
 
@@ -10,7 +11,22 @@ const FORBIDDEN_NAME_FRAGMENT = /SECRET|SERVICE|DATABASE|PASSWORD|PRIVATE|TOKEN/
 const envExample = readFileSync(".env.example", "utf8")
 const envLines = envExample.split(/\r?\n/).filter((line) => line.trim() !== "" && !line.trimStart().startsWith("#"))
 const vercelJson = JSON.parse(readFileSync("vercel.json", "utf8")) as Record<string, unknown>
-const nextConfigSource = readFileSync("next.config.ts", "utf8")
+// Todo el código que llega a compilarse o a ejecutarse (no las pruebas).
+const SOURCE_ROOTS = ["app", "components", "lib", "services", "scripts", "next.config.ts"]
+const SOURCE_FILE = /\.(ts|tsx|js|jsx|mjs|cjs)$/
+
+function sourceFiles(path: string): string[] {
+  if (!existsSync(path)) return []
+  if (statSync(path).isFile()) return SOURCE_FILE.test(path) ? [path] : []
+  return readdirSync(path).flatMap((entry) => sourceFiles(join(path, entry)))
+}
+
+// Cada variable NEXT_PUBLIC_ que menciona el código fuente, con el archivo donde aparece.
+function publicVariablesInSource(roots: readonly string[]): Array<{ file: string; name: string }> {
+  return roots.flatMap(sourceFiles).flatMap((file) =>
+    [...readFileSync(file, "utf8").matchAll(/NEXT_PUBLIC_[A-Z0-9_]+/g)].map((m) => ({ file, name: m[0] })),
+  )
+}
 
 describe(".env.example (Fase 14, Decisión A)", () => {
   test("declara exactamente las variables públicas permitidas", () => {
@@ -21,8 +37,24 @@ describe(".env.example (Fase 14, Decisión A)", () => {
     for (const line of envLines) expect(line).toMatch(/^[A-Z_]+=$/)
   })
 
-  test("ningún nombre público contiene un fragmento de secreto", () => {
+  test("ninguna variable permitida contiene un fragmento de secreto", () => {
     for (const name of ALLOWED_PUBLIC_VARIABLES) expect(name).not.toMatch(FORBIDDEN_NAME_FRAGMENT)
+  })
+})
+
+describe("variables NEXT_PUBLIC_ en todo el código fuente (Fase 14, Decisiones 3 y 4)", () => {
+  const found = publicVariablesInSource(SOURCE_ROOTS)
+
+  test("el código fuente solo usa las variables públicas permitidas", () => {
+    expect(found.filter(({ name }) => !ALLOWED_PUBLIC_VARIABLES.includes(name))).toEqual([])
+  })
+
+  test("ninguna variable pública del código fuente tiene nombre de secreto", () => {
+    expect(found.filter(({ name }) => FORBIDDEN_NAME_FRAGMENT.test(name))).toEqual([])
+  })
+
+  test("el escaneo recorre de verdad el código: encuentra las variables de next.config.ts", () => {
+    expect(found.map(({ name }) => name)).toEqual(expect.arrayContaining(["NEXT_PUBLIC_API_BASE_URL", "NEXT_PUBLIC_SUPABASE_URL"]))
   })
 })
 
@@ -43,11 +75,6 @@ describe("next.config.ts (Fase 14, Decisiones 5 y 6)", () => {
     for (const key of ["Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy", "Permissions-Policy", "Strict-Transport-Security"]) {
       expect(keys).toContain(key)
     }
-  })
-
-  test("solo lee variables públicas permitidas", () => {
-    const read = [...nextConfigSource.matchAll(/NEXT_PUBLIC_[A-Z_]+/g)].map((m) => m[0])
-    for (const name of read) expect(ALLOWED_PUBLIC_VARIABLES).toContain(name)
   })
 })
 

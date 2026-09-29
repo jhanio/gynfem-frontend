@@ -62,6 +62,10 @@ describe("buildContentSecurityPolicy", () => {
     expect(directive(csp, "script-src")).toContain("'unsafe-eval'")
   })
 
+  test("en desarrollo omite upgrade-insecure-requests: next dev sirve por http://localhost", () => {
+    expect(buildContentSecurityPolicy({ connectOrigins: [], isDev: true })).not.toContain("upgrade-insecure-requests")
+  })
+
   test("connect-src contiene exactamente 'self' y los orígenes dados, sin comodines", () => {
     const csp = buildContentSecurityPolicy({ connectOrigins: [API, SUPABASE], isDev: false })
     expect(directive(csp, "connect-src")).toBe(`connect-src 'self' ${API} ${SUPABASE}`)

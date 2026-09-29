@@ -2,15 +2,24 @@
 // (scripts/verify-deployment.ts, docs/DEPLOYMENT.md, Sección 6). Sin red: el
 // guion descarga y estas funciones deciden.
 
-import { buildSecurityHeaders } from "./security-headers.ts"
-
 export type Check = { name: string; ok: boolean; detail: string }
 
 const check = (name: string, ok: boolean, detail: string): Check => ({ name, ok, detail })
 
-// Valores exactos que exige la verificación. La CSP se revisa aparte porque su
-// connect-src depende de las variables de cada entorno.
-const EXPECTED_HEADERS = buildSecurityHeaders({}, false).filter((h) => h.key !== "Content-Security-Policy")
+// Valores exactos que exige la verificación, escritos aquí a propósito y no
+// importados de lib/security-headers.ts: si alguien quitara una cabecera del
+// generador, la verificación la seguiría exigiendo. Una prueba comprueba que
+// ambas listas coinciden. La CSP se revisa aparte porque su connect-src depende
+// de las variables de cada entorno.
+export const REQUIRED_HEADERS: ReadonlyArray<{ key: string; value: string }> = [
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "no-referrer" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()" },
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "X-Robots-Tag", value: "noindex, nofollow" },
+]
 
 const SECRET_PATTERNS: ReadonlyArray<[string, RegExp]> = [
   ["clave secreta de Supabase (sb_secret_)", /sb_secret_[A-Za-z0-9_-]*/g],
@@ -45,7 +54,7 @@ export function findBundleSecrets(source: string): string[] {
 }
 
 export function checkSecurityHeaders(headers: Headers): Check[] {
-  const checks = EXPECTED_HEADERS.map(({ key, value }) => {
+  const checks = REQUIRED_HEADERS.map(({ key, value }) => {
     const actual = headers.get(key)
     return check(`cabecera ${key}`, actual === value, actual === null ? "ausente" : actual)
   })
@@ -62,6 +71,8 @@ export function checkContentSecurityPolicy(csp: string | null, expectedConnectOr
   const connect = directives.get("connect-src") ?? "connect-src ausente"
   const checks = [
     check("CSP presente", true, csp),
+    check("CSP default-src 'self'", directives.get("default-src") === "default-src 'self'", directives.get("default-src") ?? "ausente"),
+    check("CSP base-uri 'self'", directives.get("base-uri") === "base-uri 'self'", directives.get("base-uri") ?? "ausente"),
     check("CSP sin comodines", !csp.includes("*"), csp.includes("*") ? "contiene *" : "sin *"),
     check("CSP sin 'unsafe-eval'", !csp.includes("'unsafe-eval'"), directives.get("script-src") ?? "script-src ausente"),
     check("CSP frame-ancestors 'none'", directives.get("frame-ancestors") === "frame-ancestors 'none'", directives.get("frame-ancestors") ?? "ausente"),

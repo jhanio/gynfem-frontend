@@ -58,7 +58,8 @@ async function verifyPublicDomain(base: string): Promise<{ checks: Check[]; html
 
 async function verifyBundle(base: string, html: string): Promise<Check[]> {
   const scripts = extractScriptUrls(html, base)
-  const findings: string[] = []
+  // El HTML inicial también cuenta: lleva en línea la carga RSC y los scripts de arranque.
+  const findings: string[] = findBundleSecrets(html).map((f) => `HTML inicial: ${f}`)
   const exposedMaps: string[] = []
   for (const script of scripts) {
     findings.push(...findBundleSecrets(await (await fetch(script)).text()).map((f) => `${new URL(script).pathname}: ${f}`))
@@ -66,7 +67,7 @@ async function verifyBundle(base: string, html: string): Promise<Check[]> {
     if (map.status === 200) exposedMaps.push(new URL(script).pathname)
   }
   return [
-    { name: "paquete servido sin secretos", ok: scripts.length > 0 && findings.length === 0, detail: scripts.length === 0 ? "no se encontraron scripts" : findings.length === 0 ? `${scripts.length} scripts revisados` : findings.join("; ") },
+    { name: "paquete servido sin secretos", ok: scripts.length > 0 && findings.length === 0, detail: scripts.length === 0 ? "no se encontraron scripts" : findings.length === 0 ? `HTML inicial y ${scripts.length} scripts revisados` : findings.join("; ") },
     { name: "sin mapas de código publicados", ok: exposedMaps.length === 0, detail: exposedMaps.length === 0 ? `${scripts.length} .map responden distinto de 200` : exposedMaps.join(", ") },
   ]
 }

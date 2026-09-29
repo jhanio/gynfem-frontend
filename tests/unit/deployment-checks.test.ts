@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs"
 import { describe, expect, test } from "vitest"
 import {
   checkContentSecurityPolicy,
@@ -8,6 +9,7 @@ import {
   findBundleSecrets,
   findTraceLeaks,
   isVercelLoginWall,
+  REQUIRED_HEADERS,
 } from "@/lib/deployment-checks"
 import { buildSecurityHeaders } from "@/lib/security-headers"
 
@@ -75,7 +77,7 @@ describe("checkSecurityHeaders", () => {
 })
 
 describe("checkContentSecurityPolicy", () => {
-  const csp = (connect: string) => `default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src ${connect}; frame-ancestors 'none'; object-src 'none'`
+  const csp = (connect: string) => `default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src ${connect}; frame-ancestors 'none'; base-uri 'self'; object-src 'none'`
 
   test("con orígenes esperados exige connect-src exacto", () => {
     expect(checkContentSecurityPolicy(csp("'self' https://a.example.com"), ["https://a.example.com"]).every((c) => c.ok)).toBe(true)
@@ -89,6 +91,25 @@ describe("checkContentSecurityPolicy", () => {
 
   test("sin cabecera, falla", () => {
     expect(checkContentSecurityPolicy(null, undefined).some((c) => !c.ok)).toBe(true)
+  })
+
+  test("exige default-src 'self' y base-uri 'self'", () => {
+    const failed = (policy: string) => checkContentSecurityPolicy(policy, undefined).filter((c) => !c.ok).map((c) => c.name)
+    expect(failed("default-src *; base-uri 'self'; frame-ancestors 'none'; object-src 'none'")).toContain("CSP default-src 'self'")
+    expect(failed("default-src 'self'; frame-ancestors 'none'; object-src 'none'")).toContain("CSP base-uri 'self'")
+  })
+})
+
+describe("valores esperados independientes del generador", () => {
+  // Si la verificación leyera sus valores del generador, quitar una cabecera de
+  // lib/security-headers.ts haría que la verificación dejara de exigirla.
+  test("deployment-checks.ts no importa el generador de cabeceras", () => {
+    expect(readFileSync("lib/deployment-checks.ts", "utf8")).not.toMatch(/from\s+["'][^"']*security-headers/)
+  })
+
+  test("la lista literal de la verificación coincide con lo que genera la app", () => {
+    const generated = buildSecurityHeaders({}, false).filter((h) => h.key !== "Content-Security-Policy")
+    expect([...REQUIRED_HEADERS].sort((a, b) => a.key.localeCompare(b.key))).toEqual(generated.sort((a, b) => a.key.localeCompare(b.key)))
   })
 })
 

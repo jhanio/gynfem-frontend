@@ -43,7 +43,8 @@ export function buildContentSecurityPolicy({ connectOrigins, isDev }: { connectO
     "base-uri 'self'",
     "form-action 'self'",
     "object-src 'none'",
-    "upgrade-insecure-requests",
+    // En next dev la app se sirve por http://localhost: pedir https rompería la carga.
+    ...(isDev ? [] : ["upgrade-insecure-requests"]),
   ].join("; ")
 }
 

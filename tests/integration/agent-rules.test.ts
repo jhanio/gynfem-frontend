@@ -15,6 +15,7 @@ const NEXT_BIN = join(ROOT, "node_modules/next/dist/bin/next")
 // Dentro del repositorio para que `next` se resuelva desde node_modules; ignorado por git.
 const WORK_DIR = join(ROOT, ".agent-rules-test")
 const STARTUP_TIMEOUT_MS = 90_000
+const FETCH_TIMEOUT_MS = 15_000
 
 const realClaudeMd = readFileSync(join(ROOT, "CLAUDE.md"), "utf8")
 
@@ -56,7 +57,8 @@ async function startNextDevOnce(dir: string) {
       if (exitCode !== null) throw new Error(`next dev terminó con código ${exitCode}:\n${log}`)
       if (Date.now() > deadline) throw new Error(`next dev no respondió a tiempo:\n${log}`)
       try {
-        await fetch(`http://localhost:${port}/`)
+        // Con tiempo máximo: si la compilación se colgara, el finally seguiría matando el proceso.
+        await fetch(`http://localhost:${port}/`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
         return log
       } catch {
         await new Promise((r) => setTimeout(r, 300))
