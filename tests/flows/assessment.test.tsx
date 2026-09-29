@@ -110,3 +110,16 @@ describe("el resultado nunca queda desfasado de los valores en pantalla (R1, R2)
     expect(await screen.findByLabelText("Edad")).toHaveValue(null)
   })
 })
+
+describe("un cálculo en curso no publica un resultado para valores ya editados (R2b)", () => {
+  test("editar mientras se calcula descarta la respuesta que llega después", async () => {
+    const user = await openQuickAssessment()
+    await fill(user, IN_RANGE)
+    await user.click(submitButton())
+    const age = screen.getByLabelText("Edad")
+    await user.clear(age)
+    await user.type(age, "33")
+    await new Promise((r) => setTimeout(r, 800))
+    expect(screen.queryByRole("heading", { name: /^Riesgo / })).not.toBeInTheDocument()
+  })
+})
