@@ -118,7 +118,8 @@ describe("la tarjeta del resultado declara que es simulado (R3)", () => {
     await user.click(submitButton())
     const heading = await screen.findByRole("heading", { name: "Riesgo Bajo" }, { timeout: 2000 })
     const card = heading.closest("section")!
-    expect(card).toHaveTextContent(/RESULTADO SIMULADO/)
+    // El texto del DOM va en minúsculas; las mayúsculas las pone el CSS.
+    expect(card).toHaveTextContent(/resultado simulado/i)
     expect(card).toHaveTextContent(/no usar para decisiones clínicas/)
     expect(card).toHaveTextContent(/Modelo SIMULADO/)
     expect(card).not.toHaveTextContent(/GynFem-RC/)
