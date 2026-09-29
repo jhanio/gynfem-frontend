@@ -13,3 +13,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .label { display:block; color:#334951; font-size:13px; font-weight:700; margin-bottom:6px; }
 .input, .select { width:100%; border:1px solid #b8c7cc; border-radius:7px; background:white; color:var(--foreground); padding:10px 12px; }
 .input::placeholder { color:#82939a; }
+
+/* Encabezados de página. En @layer components para que las utilidades (p. ej. mt-1) sigan pudiendo ajustarlos. */
+@layer components {
+  .eyebrow { margin: 0 0 8px; color: var(--primary); font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+  .page-title { margin: 0; color: var(--foreground); font-size: 28px; font-weight: 700; line-height: 1.2; }
+  .muted { margin: 8px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+}

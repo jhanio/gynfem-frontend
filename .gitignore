@@ -141,3 +141,20 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Material de referencia local — NUNCA versionar
+workspace-reference/
+*.docx
+*.pdf
+
+# Secretos
+.env
+.env.*
+!.env.example
+
+# Tipos generados por Next.js
+next-env.d.ts
+
+# Instrucciones para agentes que genera `next dev` (no se versionan)
+/AGENTS.md
+/CLAUDE.md
