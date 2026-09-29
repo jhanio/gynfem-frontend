@@ -84,3 +84,29 @@ describe("texto honesto sobre el registro (F6, hallazgo 5)", () => {
     expect(screen.getByText(/modo simulado la evaluación no se guarda/)).toBeInTheDocument()
   })
 })
+
+describe("el resultado nunca queda desfasado de los valores en pantalla (R1, R2)", () => {
+  test("R2: editar un valor tras calcular retira el resultado anterior", async () => {
+    const user = await openQuickAssessment()
+    await fill(user, IN_RANGE)
+    await user.click(submitButton())
+    expect(await screen.findByRole("heading", { name: "Riesgo Bajo" }, { timeout: 2000 })).toBeInTheDocument()
+    await fill(user, { "Presión sistólica": "180" })
+    expect(screen.queryByRole("heading", { name: /^Riesgo / })).not.toBeInTheDocument()
+  })
+
+  test("R1: pasar de la evaluación de una paciente a la rápida no arrastra valores ni resultado", async () => {
+    const user = await renderApp()
+    await loginAs(user, MEDICO_EMAIL)
+    await openPatientFile(user)
+    await user.click(screen.getByRole("button", { name: "Nueva evaluación" }))
+    await screen.findByLabelText("Edad")
+    await fill(user, IN_RANGE)
+    await user.click(submitButton())
+    await screen.findByRole("heading", { name: "Riesgo Bajo" }, { timeout: 2000 })
+    await user.click(screen.getByRole("button", { name: "Evaluación rápida" }))
+    expect(await screen.findByText(/Modo rápido/)).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: /^Riesgo / })).not.toBeInTheDocument()
+    expect(await screen.findByLabelText("Edad")).toHaveValue(null)
+  })
+})
