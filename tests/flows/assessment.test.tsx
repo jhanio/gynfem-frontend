@@ -111,6 +111,20 @@ describe("el resultado nunca queda desfasado de los valores en pantalla (R1, R2)
   })
 })
 
+describe("la tarjeta del resultado declara que es simulado (R3)", () => {
+  test("lleva su propia marca de simulado y no cita un modelo real", async () => {
+    const user = await openQuickAssessment()
+    await fill(user, IN_RANGE)
+    await user.click(submitButton())
+    const heading = await screen.findByRole("heading", { name: "Riesgo Bajo" }, { timeout: 2000 })
+    const card = heading.closest("section")!
+    expect(card).toHaveTextContent(/RESULTADO SIMULADO/)
+    expect(card).toHaveTextContent(/no usar para decisiones clínicas/)
+    expect(card).toHaveTextContent(/Modelo SIMULADO/)
+    expect(card).not.toHaveTextContent(/GynFem-RC/)
+  })
+})
+
 describe("un cálculo en curso no publica un resultado para valores ya editados (R2b)", () => {
   test("editar mientras se calcula descarta la respuesta que llega después", async () => {
     const user = await openQuickAssessment()
