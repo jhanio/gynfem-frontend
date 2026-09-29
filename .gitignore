@@ -155,6 +155,11 @@ workspace-reference/
 # Tipos generados por Next.js
 next-env.d.ts
 
-# Instrucciones para agentes que genera `next dev` (no se versionan)
+# CLAUDE.md SÍ se versiona: `next dev` solo reescribe el bloque
+# entre los marcadores nextjs-agent-rules y conserva el resto.
+# AGENTS.md NUNCA se versiona (permanente): si existe con ese bloque, `next dev`
+# lo mantiene allí y deja de actualizar el de CLAUDE.md. Ver CLAUDE.md.
 /AGENTS.md
-/CLAUDE.md
+
+# Proyecto temporal de tests/integration/agent-rules.test.ts
+/.agent-rules-test/
