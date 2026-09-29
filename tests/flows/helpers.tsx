@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { vi } from "vitest"
 
-export const MEDICO_EMAIL = "ana.morales@gynfem.test"
+export const MEDICO_EMAIL = "medica.ficticia@gynfem.test"
 export const ADMIN_EMAIL = "admin@gynfem.test"
 
 type User = ReturnType<typeof userEvent.setup>
@@ -26,5 +26,5 @@ export async function openPatientFile(user: User) {
   await user.type(await screen.findByLabelText("Criterio de búsqueda"), "00000001")
   await user.click(screen.getByRole("button", { name: "Buscar" }))
   await user.click(await screen.findByRole("button", { name: /Ver ficha/ }))
-  await screen.findByRole("heading", { level: 1, name: /Paciente de Ejemplo/ })
+  await screen.findByRole("heading", { level: 1, name: /Paciente Ficticia Uno/ })
 }

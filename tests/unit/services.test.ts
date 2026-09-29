@@ -61,7 +61,7 @@ describe("searchPatients (T7)", () => {
   })
 
   test("por nombre busca un fragmento sin distinguir mayúsculas", async () => {
-    expect((await svc.searchPatients("GARCÍA", "name")).map((p) => p.id)).toEqual(["p-001"])
+    expect((await svc.searchPatients("FICTICIA UNO", "name")).map((p) => p.id)).toEqual(["p-001"])
   })
 })
 

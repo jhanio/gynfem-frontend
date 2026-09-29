@@ -16,6 +16,15 @@ describe("banner de datos simulados (F1)", () => {
   })
 })
 
+describe("identidad simulada en la cabecera (Fase 14, Decisión 7)", () => {
+  test.each([MEDICO_EMAIL, ADMIN_EMAIL])("tras entrar como %s el nombre mostrado declara que es ficticio", async (email) => {
+    const user = await renderApp()
+    await loginAs(user, email)
+    const banner = await screen.findByRole("banner")
+    expect(banner).toHaveTextContent(/Fictici[ao]/)
+  })
+})
+
 describe("login (F2)", () => {
   test("con campos vacíos muestra una alerta y no entra", async () => {
     const user = await renderApp()

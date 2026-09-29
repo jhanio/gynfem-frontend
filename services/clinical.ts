@@ -10,9 +10,9 @@ export function resolveSimulatedRole(email: string): Role {
 }
 
 let simulatedUsers: readonly UserAccount[] = [
-  { id: "u-001", email: "ana.morales@gynfem.test", name: "Dra. Ana Morales", role: "Médico", active: true },
-  { id: "u-002", email: "admin@gynfem.test", name: "Administración GynFem", role: "Administrador", active: true },
-  { id: "u-003", email: "soporte@gynfem.test", name: "Soporte clínico", role: "Médico", active: true },
+  { id: "u-001", email: "medica.ficticia@gynfem.test", name: "Médica Ficticia Uno", role: "Médico", active: true },
+  { id: "u-002", email: "admin@gynfem.test", name: "Administración Ficticia", role: "Administrador", active: true },
+  { id: "u-003", email: "soporte@gynfem.test", name: "Soporte Ficticio", role: "Médico", active: true },
 ]
 
 export const USERS_PAGE_SIZE = 6
@@ -46,9 +46,9 @@ export type ClinicalField = { key: string; label: string; unit: string; min: num
 export type RiskResult = { risk: "Bajo" | "Moderado" | "Alto"; probabilities: Record<"Bajo" | "Moderado" | "Alto", number>; generatedAt: string; modelVersion: string; extrapolated: string[]; disclaimer: string }
 
 const patients: Patient[] = [
-  { id: "p-001", documentType: "DNI", documentNumber: "00000001", names: "Paciente de Ejemplo", surnames: "García Quispe", active: true },
-  { id: "p-002", documentType: "DNI", documentNumber: "00000002", names: "María Elena", surnames: "Salazar Torres", active: true },
-  { id: "p-003", documentType: "CE", documentNumber: "000000003", names: "Ana Lucía", surnames: "Flores Mendoza", active: true },
+  { id: "p-001", documentType: "DNI", documentNumber: "00000001", names: "Paciente Ficticia", surnames: "Uno", active: true },
+  { id: "p-002", documentType: "DNI", documentNumber: "00000002", names: "Paciente Ficticia", surnames: "Dos", active: true },
+  { id: "p-003", documentType: "CE", documentNumber: "000000003", names: "Paciente Ficticia", surnames: "Tres", active: true },
 ]
 
 // Simulación aislada: los valores clínicos viven únicamente en esta capa de servicios.
