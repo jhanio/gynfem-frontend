@@ -3,7 +3,8 @@ import { execSync, spawn } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
 import { join, resolve } from "node:path"
-import { afterAll, describe, expect, test } from "vitest"
+import { afterAll, beforeAll, describe, expect, test } from "vitest"
+import { server } from "../msw/server"
 
 // `next dev` gestiona el bloque entre estos marcadores de CLAUDE.md y debe
 // conservar todo lo demás: las reglas del proyecto (Fase 14). Estas pruebas
@@ -77,6 +78,11 @@ async function startNextDevOnce(dir: string) {
 }
 
 // En Windows, next dev tarda un momento en soltar sus archivos tras detenerlo.
+// Estas pruebas arrancan un `next dev` real y le hacen peticiones: aquí MSW no intercepta.
+beforeAll(() => server.close())
+// tests/setup.ts lo cierra al terminar el archivo, y cerrar dos veces falla.
+afterAll(() => server.listen())
+
 afterAll(() => rmSync(WORK_DIR, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }))
 
 describe("CLAUDE.md del repositorio (Fase 14)", () => {

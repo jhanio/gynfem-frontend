@@ -17,43 +17,65 @@ los marcadores; nunca dentro, porque Next las borraría.
 
 ## Siempre
 
-- Toda la interfaz está en **modo simulado** hasta la Fase 15: los datos salen
-  de `services/clinical.ts`. El banner «DATOS SIMULADOS» es obligatorio.
-- Todo dato simulado es **evidentemente ficticio**: documentos de ceros,
-  nombres que dicen «Ficticia/Ficticio/Ejemplo» y correos en `.test`
-  (`tests/unit/simulated-data.test.ts`). El despliegue es público.
-- La interfaz nunca decide el rol por su cuenta. `resolveSimulatedRole` existe
-  solo en modo simulado y desaparece en la Fase 15 (`GET /api/v1/me`).
+- La interfaz habla con la **API real** desde la Fase 15. Ya no existe el modo
+  simulado: nada de datos de ejemplo en `services/` ni banner «DATOS SIMULADOS».
+- **Un solo punto hace peticiones**: `lib/api/client.ts` (navegador) y
+  `lib/server/` (BFF). Ningún componente llama a `fetch`; todo pasa por
+  `services/` (`tests/unit/phase15-guards.test.ts`).
+- **Ningún rango, límite ni umbral clínico se codifica.** Salen de
+  `GET /prediction/schema` en tiempo de ejecución. Los nombres de los campos
+  clínicos solo aparecen en `lib/clinical-validation.ts` y `lib/field-labels.ts`,
+  y esos archivos no contienen ningún número.
+- **La sesión vive en cookies `httpOnly`** que fija el BFF. Nunca un token en
+  `localStorage`, `sessionStorage` ni en JavaScript. Ningún dato clínico en la
+  consola ni en almacenamiento del navegador.
+- **Nunca reintentar una escritura** de forma automática. Solo las lecturas
+  (`apiRead`) se reintentan; ante un resultado desconocido se manda a comprobar.
+- La interfaz nunca decide el rol: viene de `GET /api/v1/me`. Lo que un rol no
+  puede hacer no se muestra, pero quien autoriza es el backend.
+- La advertencia clínica de la API aparece en **todo** resultado de predicción.
+- Todo dato de prueba es **evidentemente ficticio**: nombres que dicen
+  «Ficticia/Ficticio/Ejemplo/Sintetica», documentos imposibles y correos en
+  `.test` o `.example`. El repositorio es público.
+- Nunca pedir, escribir ni registrar contraseñas ni tokens: las comprobaciones
+  con credenciales las ejecuta la persona responsable.
 - Dependencias con versión exacta: nunca `latest`, `^` ni `~`.
 - `main` solo cambia por pull request con CI en verde. Ninguna rama `v0/*` se
   fusiona directamente.
 - Antes de dar algo por terminado: `npm run lint`, `npm run typecheck`,
   `npm run test:coverage` (mínimo 80 % en `services/` y `lib/`) y `npm run build`.
-- Pruebas antes que implementación (RED → GREEN).
+- Pruebas antes que implementación (RED → GREEN). Las pruebas no llaman a la
+  API real: MSW con `onUnhandledFrame: "error"` (`tests/setup.ts`).
 
 ## Despliegue (Fase 14) — `docs/DEPLOYMENT.md`
 
-- **Nada secreto con prefijo `NEXT_PUBLIC_`.** Next copia esas variables en el
-  JavaScript del navegador. Solo existen tres públicas:
-  `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_SUPABASE_URL` y
-  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (lo fija
+- **No existe ninguna variable `NEXT_PUBLIC_`** (Fase 15). Next copiaría su
+  valor en el JavaScript del navegador. Las tres variables son de **servidor**:
+  `API_BASE_URL`, `SUPABASE_URL` y `SUPABASE_PUBLISHABLE_KEY`; solo las leen
+  `lib/server/env.ts` y `next.config.ts` (lo fija
   `tests/unit/deployment-config.test.ts`). Añadir otra exige decisión explícita.
 - La clave secreta de Supabase, la URL de la base y cualquier `GYNFEM_*` del
   backend **nunca** entran en este repositorio ni en Vercel: viven en Render.
 - Nunca escribir, pedir ni mostrar valores reales de variables: solo nombres.
   `.env.example` va sin valores.
 - En Vercel, las variables van **solo en el ámbito Production**. Las vistas
-  previas no apuntan a datos reales y están protegidas con Standard
-  Protection (Vercel Authentication).
+  previas no apuntan a datos reales (su BFF responde 503 `not_configured`) y
+  están protegidas con Standard Protection (Vercel Authentication).
 - Las cabeceras de seguridad y la CSP se definen en `lib/security-headers.ts`
-  (vía `next.config.ts`), no en `vercel.json`. Un origen nuevo que llame el
-  navegador (Fase 15) entra en `connect-src` por variable, nunca con comodín.
-- En CORS del backend y en la documentación se usa el **dominio de
-  producción** de Vercel, nunca la URL única de un despliegue ni de una vista
-  previa.
-- Tras cada despliegue de producción: `npm run verify:deployment -- <dominio>`
-  (y `--connect` con los orígenes esperados). Tras fusionar una rama, borrar
-  sus despliegues de vista previa en Vercel.
+  (vía `next.config.ts`), no en `vercel.json`. `connect-src` es exactamente
+  `'self'`: el navegador solo habla con su propio origen. Si algún día debe
+  llamar a otro, entra por decisión explícita, nunca con comodín.
+- El BFF (`lib/server/`) no es un proxy abierto: solo reenvía las rutas de
+  `lib/server/allowed-routes.ts`, que `tests/contract/rbac.test.ts` compara con
+  la matriz del backend. No registra nada: por él pasan datos clínicos.
+- Las funciones de Vercel corren en `pdx1` (`vercel.json`), junto a Render.
+- En la documentación se usa el **dominio de producción** de Vercel, nunca la
+  URL única de un despliegue ni de una vista previa.
+- Tras cada despliegue de producción: `npm run verify:deployment -- <dominio>`.
+  Tras fusionar una rama, borrar sus despliegues de vista previa en Vercel.
+- La base no admite borrado físico. Los datos sintéticos de una verificación
+  se dan de **baja lógica** por la API y se anotan en `docs/DEPLOYMENT.md`;
+  nunca se desactivan los triggers `*_forbid_delete`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

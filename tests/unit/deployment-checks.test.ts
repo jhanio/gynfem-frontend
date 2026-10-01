@@ -3,7 +3,8 @@ import { describe, expect, test } from "vitest"
 import {
   checkContentSecurityPolicy,
   checkSecurityHeaders,
-  checkSimulatedContent,
+  checkAnonymousContent,
+  checkAnonymousSession,
   decodeJwtRole,
   extractScriptUrls,
   findBundleSecrets,
@@ -17,7 +18,7 @@ const b64url = (value: object) => Buffer.from(JSON.stringify(value)).toString("b
 const jwt = (payload: object) => `${b64url({ alg: "HS256", typ: "JWT" })}.${b64url(payload)}.firma-ficticia`
 const headersFrom = (entries: Record<string, string>) => new Headers(entries)
 const goodHeaders = () =>
-  headersFrom(Object.fromEntries(buildSecurityHeaders({ NEXT_PUBLIC_API_BASE_URL: "https://api.example.com" }, false).map((h) => [h.key, h.value])))
+  headersFrom(Object.fromEntries(buildSecurityHeaders(false).map((h) => [h.key, h.value])))
 
 describe("decodeJwtRole", () => {
   test("lee el rol de un JWT", () => {
@@ -108,14 +109,14 @@ describe("valores esperados independientes del generador", () => {
   })
 
   test("la lista literal de la verificación coincide con lo que genera la app", () => {
-    const generated = buildSecurityHeaders({}, false).filter((h) => h.key !== "Content-Security-Policy")
+    const generated = buildSecurityHeaders(false).filter((h) => h.key !== "Content-Security-Policy")
     expect([...REQUIRED_HEADERS].sort((a, b) => a.key.localeCompare(b.key))).toEqual(generated.sort((a, b) => a.key.localeCompare(b.key)))
   })
 })
 
 describe("isVercelLoginWall", () => {
   test("una respuesta 200 normal no es el muro de login", () => {
-    expect(isVercelLoginWall(200, new Headers(), "<html>DATOS SIMULADOS</html>")).toBe(false)
+    expect(isVercelLoginWall(200, new Headers(), "<html>Comprobando la sesión…</html>")).toBe(false)
   })
 
   test.each([
@@ -128,11 +129,41 @@ describe("isVercelLoginWall", () => {
   })
 })
 
-describe("checkSimulatedContent", () => {
-  test("acepta el login simulado y rechaza pantallas clínicas en el HTML inicial", () => {
-    expect(checkSimulatedContent("<div>DATOS SIMULADOS</div><h1>Iniciar sesión</h1>").every((c) => c.ok)).toBe(true)
-    expect(checkSimulatedContent("<div>DATOS SIMULADOS</div><h1>Iniciar sesión</h1><h2>Buscar paciente</h2>").some((c) => !c.ok)).toBe(true)
-    expect(checkSimulatedContent("<h1>Iniciar sesión</h1>").some((c) => !c.ok)).toBe(true)
+describe("checkAnonymousContent (Fase 15: ya no hay modo simulado)", () => {
+  test("acepta el HTML inicial sin pantallas clínicas ni banner simulado", () => {
+    expect(checkAnonymousContent("<main><p>Comprobando la sesión…</p></main>").every((c) => c.ok)).toBe(true)
+  })
+
+  test.each(["Buscar paciente", "Administración de usuarios", "Evaluación de riesgo", "Ficha de paciente", "Registrar paciente"])(
+    "rechaza un HTML inicial con la pantalla «%s»", (marker) => {
+      expect(checkAnonymousContent(`<main><h2>${marker}</h2></main>`).some((c) => !c.ok)).toBe(true)
+    })
+
+  test("rechaza el banner del modo simulado: producción ya sirve datos reales", () => {
+    expect(checkAnonymousContent("<div>DATOS SIMULADOS</div>").some((c) => !c.ok)).toBe(true)
+  })
+})
+
+describe("checkAnonymousSession (el BFF no da nada sin cookies)", () => {
+  const body = (code: string) => JSON.stringify({ error: { code, message: "m", request_id: "r" } })
+  const noStore = new Headers({ "cache-control": "no-store" })
+
+  test("401 not_authenticated con no-store es lo correcto", () => {
+    expect(checkAnonymousSession("/api/session", 401, noStore, body("not_authenticated"), false).every((c) => c.ok)).toBe(true)
+  })
+
+  test.each([
+    ["responde 200", 200, noStore, JSON.stringify({ id: "x", role: "medico" })],
+    ["no usa el formato uniforme", 401, noStore, "<html>Unauthorized</html>"],
+    ["permite guardar la respuesta en caché", 401, new Headers(), body("not_authenticated")],
+    ["fija una cookie", 401, new Headers({ "cache-control": "no-store", "set-cookie": "gf_at=x" }), body("not_authenticated")],
+  ])("falla si %s", (_name, status, headers, text) => {
+    expect(checkAnonymousSession("/api/session", status, headers, text, false).some((c) => !c.ok)).toBe(true)
+  })
+
+  test("503 not_configured solo se admite en local (sin variables)", () => {
+    expect(checkAnonymousSession("/api/session", 503, noStore, body("not_configured"), true).every((c) => c.ok)).toBe(true)
+    expect(checkAnonymousSession("/api/session", 503, noStore, body("not_configured"), false).some((c) => !c.ok)).toBe(true)
   })
 })
 

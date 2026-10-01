@@ -1,33 +1,33 @@
 // Verificación posterior al despliegue (docs/DEPLOYMENT.md, Sección 6).
 //
-//   npm run verify:deployment -- https://<dominio-de-produccion> [--connect <origen>,<origen>]
+//   npm run verify:deployment -- https://<dominio-de-produccion>
 //   npm run verify:deployment -- http://localhost:3000 --local
 //
-// --connect: orígenes exactos que debe tener connect-src (los de la API y Supabase).
-// --local:   contra `next start`; omite las comprobaciones que exigen HTTPS y Vercel.
+// --local: contra `next start`; omite las comprobaciones que exigen HTTPS y Vercel.
+// Desde la Fase 15 connect-src debe ser exactamente 'self' (el navegador solo
+// habla con su propio origen), así que ya no hay orígenes que pasar.
 // Termina con código 1 si alguna comprobación falla. Solo lee: no envía datos.
 
 import {
   type Check,
   checkContentSecurityPolicy,
   checkSecurityHeaders,
-  checkSimulatedContent,
+  checkAnonymousContent,
+  checkAnonymousSession,
   extractScriptUrls,
   findBundleSecrets,
   findTraceLeaks,
   isVercelLoginWall,
 } from "../lib/deployment-checks.ts"
 
-const USAGE = "Uso: npm run verify:deployment -- <url> [--connect <origen>,<origen>] [--local]"
+const USAGE = "Uso: npm run verify:deployment -- <url> [--local]"
 
 function parseArgs(argv: string[]) {
   const [target, ...rest] = argv
   if (!target) throw new Error(USAGE)
-  const connectIndex = rest.indexOf("--connect")
-  const connect = connectIndex === -1 ? undefined : (rest[connectIndex + 1] ?? "").split(",").filter(Boolean)
   const base = new URL(target)
   if (base.pathname !== "/" || base.search) throw new Error("La URL debe ser solo el origen, sin ruta.")
-  return { base: base.origin, isLocal: rest.includes("--local"), connect }
+  return { base: base.origin, isLocal: rest.includes("--local") }
 }
 
 async function verifyHttps(base: string): Promise<Check[]> {
@@ -82,15 +82,26 @@ async function verifyNotFound(base: string): Promise<Check[]> {
   ]
 }
 
+// Solo lecturas, sin credenciales: lo que ve un visitante sin sesión.
+async function verifyAnonymousSession(base: string, isLocal: boolean): Promise<Check[]> {
+  const checks: Check[] = []
+  for (const path of ["/api/session", "/api/v1/prediction/schema"]) {
+    const response = await fetch(`${base}${path}`, { redirect: "manual" })
+    checks.push(...checkAnonymousSession(path, response.status, response.headers, await response.text(), isLocal))
+  }
+  return checks
+}
+
 async function main() {
-  const { base, isLocal, connect } = parseArgs(process.argv.slice(2))
+  const { base, isLocal } = parseArgs(process.argv.slice(2))
   const checks: Check[] = []
   if (!isLocal) checks.push(...(await verifyHttps(base)))
   const root = await verifyPublicDomain(base)
   if (!isLocal) checks.push(...root.checks)
   checks.push(...checkSecurityHeaders(root.headers))
-  checks.push(...checkContentSecurityPolicy(root.headers.get("Content-Security-Policy"), connect))
-  checks.push(...checkSimulatedContent(root.html))
+  checks.push(...checkContentSecurityPolicy(root.headers.get("Content-Security-Policy"), []))
+  checks.push(...checkAnonymousContent(root.html))
+  checks.push(...(await verifyAnonymousSession(base, isLocal)))
   checks.push(...(await verifyBundle(base, root.html)))
   checks.push(...(await verifyNotFound(base)))
 

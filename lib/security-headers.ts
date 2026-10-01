@@ -1,12 +1,12 @@
-// Cabeceras de seguridad de la Fase 14 (docs/DEPLOYMENT.md, Sección 3).
-// Las lee next.config.ts al compilar: una variable mal formada detiene la
-// compilación en vez de publicar una CSP rota.
+// Cabeceras de seguridad (docs/DEPLOYMENT.md, Sección 3). Las aplica
+// next.config.ts a todas las rutas. Desde la Fase 15 no dependen de ninguna
+// variable: el navegador solo habla con su propio origen (BFF).
 
 export type SecurityHeader = { key: string; value: string }
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"])
 
-// Devuelve el origen de una variable pública, o null si no está definida.
+// Devuelve el origen de una variable de entorno, o null si no está definida.
 // Exige un origen exacto (sin ruta, barra final, query ni credenciales), https
 // salvo hacia localhost, y nunca comodines. El error nombra la variable pero no
 // su valor, igual que la validación de configuración del backend.
@@ -29,7 +29,7 @@ export function publicOrigin(name: string, value: string | undefined): string | 
   return url.origin
 }
 
-export function buildContentSecurityPolicy({ connectOrigins, isDev }: { connectOrigins: readonly string[]; isDev: boolean }): string {
+export function buildContentSecurityPolicy({ isDev }: { isDev: boolean }): string {
   // 'unsafe-inline' en script-src: Next inserta sus scripts de arranque en línea
   // y la página es estática, así que no hay nonce posible (Decisión C).
   return [
@@ -38,7 +38,8 @@ export function buildContentSecurityPolicy({ connectOrigins, isDev }: { connectO
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
-    ["connect-src 'self'", ...connectOrigins].join(" "),
+    // Solo el propio origen: a Render y a Supabase los llama el servidor (lib/server/).
+    "connect-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -48,13 +49,9 @@ export function buildContentSecurityPolicy({ connectOrigins, isDev }: { connectO
   ].join("; ")
 }
 
-export function buildSecurityHeaders(env: Record<string, string | undefined>, isDev: boolean): SecurityHeader[] {
-  const connectOrigins = [
-    publicOrigin("NEXT_PUBLIC_API_BASE_URL", env.NEXT_PUBLIC_API_BASE_URL),
-    publicOrigin("NEXT_PUBLIC_SUPABASE_URL", env.NEXT_PUBLIC_SUPABASE_URL),
-  ].filter((origin): origin is string => origin !== null)
+export function buildSecurityHeaders(isDev: boolean): SecurityHeader[] {
   return [
-    { key: "Content-Security-Policy", value: buildContentSecurityPolicy({ connectOrigins, isDev }) },
+    { key: "Content-Security-Policy", value: buildContentSecurityPolicy({ isDev }) },
     { key: "X-Frame-Options", value: "DENY" },
     { key: "X-Content-Type-Options", value: "nosniff" },
     { key: "Referrer-Policy", value: "no-referrer" },

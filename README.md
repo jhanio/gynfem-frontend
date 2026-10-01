@@ -7,23 +7,35 @@ ginecológicos. El backend vive en el repositorio `gynfem-backend`.
   [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 - **Reglas del repositorio** (también para agentes): [`CLAUDE.md`](CLAUDE.md).
 
-## Modo simulado
+## Cómo funciona
 
-La aplicación **no está conectada a ningún backend**. Todo lo que muestra sale de
-`services/clinical.ts`: pacientes, usuarios, rangos clínicos y un cálculo de
-riesgo de ejemplo que **no es el modelo real**. El banner "DATOS SIMULADOS" es
-obligatorio mientras sea así (lo protege una prueba).
+La interfaz habla con la API real de GynFem (`gynfem-backend`, en Render) a
+través de un **BFF**: los Route Handlers de `app/api/`, cuya lógica vive en
+`lib/server/`. El navegador solo llama a su propio origen.
 
-- Todos los datos son **evidentemente ficticios**, porque el despliegue es
-  público: documentos de ceros, nombres que dicen «Ficticia» o «Ejemplo» y
-  correos en el dominio reservado `.test` (`tests/unit/simulated-data.test.ts`).
-- El rol se deduce del correo (`resolveSimulatedRole`): si contiene "admin" es
-  Administrador. **Solo vale en modo simulado.** En la Fase 15 el rol vendrá de
-  `GET /api/v1/me` y esa función se elimina.
-- Los rangos clínicos están escritos a mano. En la Fase 15 saldrán de
-  `GET /api/v1/prediction/schema` (`gynfem-backend/docs/API_SPEC.md`, Sección 2.4).
-- Las evaluaciones no se guardan en ninguna ficha.
+```text
+Navegador ── /api/session, /api/wake, /api/v1/* ──► Vercel (BFF) ──► Supabase Auth
+   (cookies httpOnly, sin tokens en JavaScript)            └────────► API en Render
+```
+
+- **Sesión.** Supabase Auth emite el token y el BFF lo guarda en dos cookies
+  `httpOnly`, `Secure`, `SameSite=Strict`. El rol lo decide el backend
+  (`GET /api/v1/me`), nunca la interfaz.
+- **Capa de servicios.** `services/` es lo único que usan los componentes;
+  `lib/api/client.ts` es el único punto que hace peticiones.
+- **Rangos clínicos.** Ningún número está en el código: campos, unidades y
+  rangos llegan de `GET /api/v1/prediction/schema`. Sin ese esquema no se
+  puede evaluar.
+- **Pantallas.** Médico: búsqueda de pacientes (no hay listado general),
+  registro, ficha, edición, baja lógica, evaluación, corrección y resultado
+  guardado, además de la evaluación rápida sin paciente. Administrador:
+  usuarios.
+- **Arranque en frío.** El backend (plan Free de Render) duerme tras 15 min
+  sin tráfico y tarda hasta ~1 min en despertar: la interfaz lo anuncia como
+  «Iniciando el servicio…», nunca como un error.
 - Ningún dato real de pacientes entra al sistema hasta la Fase 17.
+
+Decisiones, tiempos de espera y riesgos: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), Sección 11.
 
 ## Requisitos previos
 
@@ -37,26 +49,27 @@ obligatorio mientras sea así (lo protege una prueba).
 
 ```bash
 npm ci
-npm run dev            # http://localhost:3000
+cp .env.example .env.local   # y rellena las tres variables (nunca se versiona)
+npm run dev                  # http://localhost:3000
 ```
 
-Credenciales de prueba: cualquier contraseña no vacía. `admin@gynfem.test` entra
-como Administrador; cualquier otro correo, como Médico.
+Con las variables apuntando a producción, la aplicación local usa la API y la
+base reales: solo con las cuentas de verificación y datos sintéticos
+(`docs/DEPLOYMENT.md`, Sección 12). Sin variables, la interfaz carga pero el
+BFF responde 503 `not_configured`.
 
-En esta fase no hace falta ninguna variable de entorno. Para probar la política
-de seguridad de contenido con orígenes reales, copia `.env.example` a
-`.env.local` (nunca se versiona) y rellénalo.
+Las pruebas no necesitan variables ni red: MSW simula el BFF, la API y Supabase.
 
 ## Variables de entorno
 
-Solo existen tres, todas **públicas**: el navegador las recibe copiadas en el
-JavaScript. Ninguna clave secreta puede llevar el prefijo `NEXT_PUBLIC_`.
+Tres, todas **de servidor**: las lee solo el BFF. No existe ninguna variable
+`NEXT_PUBLIC_`, así que ninguna llega al JavaScript del navegador.
 
 | Variable | Para qué |
 | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | Origen de la API (Render) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Proyecto de Supabase (autenticación, Fase 15) |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Clave publicable de Supabase (`sb_publishable_…`) |
+| `API_BASE_URL` | Origen de la API (Render) |
+| `SUPABASE_URL` | Proyecto de Supabase (inicio, refresco y cierre de sesión) |
+| `SUPABASE_PUBLISHABLE_KEY` | Clave publicable de Supabase (`sb_publishable_…`) |
 
 Formato y justificación de cada una: `.env.example` y `docs/DEPLOYMENT.md`,
 Sección 2. En Vercel se configuran **solo con el ámbito Production**. La clave
@@ -80,12 +93,12 @@ vistas previas protegidas con Vercel Authentication. Después de cada despliegue
 de producción:
 
 ```bash
-npm run verify:deployment -- https://<dominio-de-produccion> --connect <origen-api>,<origen-supabase>
+npm run verify:deployment -- https://<dominio-de-produccion>
 ```
 
 Comprueba HTTPS, que producción sea pública sin login de Vercel, las cabeceras
-de seguridad, que el paquete servido no tenga secretos y que los errores no
-muestren trazas. Tras fusionar una rama, borra sus vistas previas en Vercel.
+de seguridad (con `connect-src 'self'`), que sin sesión el BFF responda 401,
+que el paquete servido no tenga secretos y que los errores no muestren trazas. Tras fusionar una rama, borra sus vistas previas en Vercel.
 Procedimiento completo: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## Revertir
