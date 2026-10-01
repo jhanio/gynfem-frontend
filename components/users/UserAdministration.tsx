@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { isOutcomeUnknown, splitValidation } from "@/lib/api/errors"
 import type { Page, Role, User, UserInput } from "@/lib/api/types"
 import { type DescribedError, UNKNOWN_OUTCOME_MESSAGE, describeError } from "@/lib/error-messages"
@@ -28,6 +28,8 @@ export function UserAdministration() {
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set())
   const [saved, setSaved] = useState<SavedRows>({ page: null, byId: {} })
   const users = useLoad(() => listUsers(offset), `users:${offset}`)
+  const currentPage = useRef(users.data)
+  useEffect(() => { currentPage.current = users.data }, [users.data])
 
   const set = (field: keyof UserInput, value: string) => setForm({ ...form, [field]: value })
 
@@ -59,16 +61,19 @@ export function UserAdministration() {
     setError(null)
     setNotice("")
     setPendingIds((current) => new Set([...current, id]))
-    const page = users.data
     try {
-      // La fila muestra lo que respondió el servidor, sin esperar a releer la lista.
+      // La fila muestra lo que respondió el servidor, sin esperar a releer la
+      // lista. Se aplica sobre la página visible al llegar la respuesta, que
+      // puede no ser la del clic si entretanto se releyó.
       const user = await operation()
+      const page = currentPage.current
       setSaved((current) => ({ page, byId: { ...(current.page === page ? current.byId : {}), [user.id]: user } }))
     } catch (caught) {
       setError(describeWrite(caught))
-      // No se sabe qué quedó guardado: se vuelve a leer la página.
-      users.reload()
     } finally {
+      // Siempre se relee: una lectura iniciada después de la escritura es la
+      // que manda, y sustituye a cualquiera que estuviera en curso.
+      users.reload()
       setPendingIds((current) => new Set([...current].filter((pending) => pending !== id)))
     }
   }

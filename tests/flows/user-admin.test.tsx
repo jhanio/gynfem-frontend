@@ -149,15 +149,17 @@ describe("activar, desactivar y asignar rol", () => {
       return HttpResponse.json({ ...bff.users.find((u) => u.id === params.id), is_active: false })
     }))
     const button = within(rowOf(email)).getByRole("button", { name: "Desactivar" })
-    await user.click(button)
-    await user.click(button)
-    await user.click(button)
-    expect(within(rowOf(email)).getByRole("button")).toBeDisabled()
-    expect(within(rowOf(email)).getByLabelText(`Rol de ${email}`)).toBeDisabled()
-    // Las demás filas siguen disponibles.
-    expect(within(rowOf("usuario.ficticio3@gynfem.test")).getByRole("button", { name: "Desactivar" })).toBeEnabled()
-
-    release()
+    try {
+      await user.click(button)
+      await user.click(button)
+      await user.click(button)
+      expect(within(rowOf(email)).getByRole("button")).toBeDisabled()
+      expect(within(rowOf(email)).getByLabelText(`Rol de ${email}`)).toBeDisabled()
+      // Las demás filas siguen disponibles.
+      expect(within(rowOf("usuario.ficticio3@gynfem.test")).getByRole("button", { name: "Desactivar" })).toBeEnabled()
+    } finally {
+      release()
+    }
     expect(await within(rowOf(email)).findByRole("button", { name: "Activar" })).toBeEnabled()
     expect(calls).toBe(1)
   })
@@ -165,13 +167,42 @@ describe("activar, desactivar y asignar rol", () => {
   test("la fila se actualiza con la respuesta del servidor, sin esperar a releer la lista", async () => {
     const { bff, user } = await openUserAdmin()
     const email = "usuario.ficticio2@gynfem.test"
-    // El listado seguiría devolviendo el estado anterior: la fila no depende de él.
-    server.use(http.post("*/api/v1/users/:id/deactivate", ({ params }) => HttpResponse.json({ ...bff.users.find((u) => u.id === params.id), is_active: false })))
-    const listReads = () => bff.calls.filter((c) => c === "GET /api/v1/users").length
-    const readsBefore = listReads()
-    await user.click(within(rowOf(email)).getByRole("button", { name: "Desactivar" }))
+    // La relectura queda retenida: la fila ya debe mostrar lo que respondió el servidor.
+    let release = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    server.use(http.get("*/api/v1/users", async () => {
+      await held
+      return HttpResponse.json({ items: bff.users.slice(0, 6), limit: 6, offset: 0, has_more: true })
+    }))
+    try {
+      await user.click(within(rowOf(email)).getByRole("button", { name: "Desactivar" }))
+      expect(await within(rowOf(email)).findByRole("cell", { name: "Inactivo" })).toBeInTheDocument()
+      expect(within(rowOf(email)).getByRole("button", { name: "Activar" })).toBeEnabled()
+    } finally {
+      release()
+    }
+  })
+
+  // Autorrevisión: la respuesta se descartaba si la lista se releía (p. ej. al
+  // crear un usuario) mientras la escritura seguía en curso.
+  test("si la lista se relee mientras dura la escritura, la fila acaba mostrando el estado guardado", async () => {
+    const { bff, user } = await openUserAdmin()
+    const email = "usuario.ficticio2@gynfem.test"
+    let release = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    server.use(http.post("*/api/v1/users/:id/deactivate", async ({ params }) => {
+      await held
+      bff.users = bff.users.map((u) => (u.id === params.id ? { ...u, is_active: false } : u))
+      return HttpResponse.json(bff.users.find((u) => u.id === params.id))
+    }))
+    try {
+      await user.click(within(rowOf(email)).getByRole("button", { name: "Desactivar" }))
+      await createAccount(user, "nueva.ficticia@gynfem.test")
+      expect(await screen.findByRole("status")).toHaveTextContent("Usuario creado")
+    } finally {
+      release()
+    }
     expect(await within(rowOf(email)).findByRole("cell", { name: "Inactivo" })).toBeInTheDocument()
-    expect(within(rowOf(email)).getByRole("button", { name: "Activar" })).toBeInTheDocument()
-    expect(listReads()).toBe(readsBefore)
+    expect(await within(rowOf(email)).findByRole("button", { name: "Activar" })).toBeEnabled()
   })
 })
