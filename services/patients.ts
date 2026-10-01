@@ -8,9 +8,10 @@ export type SearchCriterion =
   | { kind: "document"; documentType: DocumentType; documentNumber: string }
   | { kind: "name"; name: string }
 
-// El backend compara el número tal cual y solo admite mayúsculas y dígitos:
-// escrito en minúsculas respondía 422 y no encontraba a la paciente.
-const normalizeDocumentNumber = (value: string): string => value.trim().toUpperCase()
+// La misma normalización que aplica el backend (sin espacios en los extremos y
+// en mayúsculas). Aquí sirve para comparar: «ficticio001» y «FICTICIO001» son
+// el mismo documento, y reescribirlo así no es un cambio que guardar.
+export const normalizeDocumentNumber = (value: string): string => value.trim().toUpperCase()
 
 function withNormalizedDocument<T extends Partial<PatientInput>>(input: T): T {
   return input.document_number === undefined ? input : { ...input, document_number: normalizeDocumentNumber(input.document_number) }

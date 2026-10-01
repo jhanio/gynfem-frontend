@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react"
 import { isOutcomeUnknown, splitValidation } from "@/lib/api/errors"
 import type { DocumentType, Patient, PatientInput } from "@/lib/api/types"
 import { type DescribedError, UNKNOWN_OUTCOME_MESSAGE, describeError } from "@/lib/error-messages"
-import { createPatient, updatePatient } from "@/services/patients"
+import { createPatient, normalizeDocumentNumber, updatePatient } from "@/services/patients"
 import { ErrorNotice, FieldError, StatusNotice } from "@/components/ui/Notices"
 import { DOCUMENT_TYPES } from "./document-types"
 
@@ -18,7 +18,7 @@ function changesOf(original: Patient, form: PatientInput): Partial<PatientInput>
   const changes: Partial<PatientInput> = {}
   if (form.given_names !== original.given_names) changes.given_names = form.given_names
   if (form.family_names !== original.family_names) changes.family_names = form.family_names
-  if (form.document_type !== original.document_type || form.document_number !== original.document_number) {
+  if (form.document_type !== original.document_type || normalizeDocumentNumber(form.document_number) !== original.document_number) {
     changes.document_type = form.document_type
     changes.document_number = form.document_number
   }

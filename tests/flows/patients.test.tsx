@@ -69,8 +69,7 @@ describe("búsqueda de pacientes (sin listado general)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Indica un documento o un nombre más preciso.")
   })
 
-  // Verificación contra producción (Fase 15): dos búsquedas respondieron 422.
-  test("un número de documento en minúsculas se envía en mayúsculas y encuentra a la paciente", async () => {
+  test("un número de documento en minúsculas y con espacios encuentra a la paciente", async () => {
     const { user } = await start()
     await user.selectOptions(screen.getByLabelText("Tipo de documento"), "PASAPORTE")
     await user.type(screen.getByLabelText("Criterio de búsqueda"), " ficticio001 ")
@@ -79,11 +78,12 @@ describe("búsqueda de pacientes (sin listado general)", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 
+  // Verificación contra producción (Fase 15): dos búsquedas respondieron 422.
+  // El tipo por defecto es DNI: un número que no es de DNI no tiene su formato.
   test("un 422 de búsqueda marca el campo y se explica junto a él; al corregir, desaparece", async () => {
     const { user } = await start()
-    await user.selectOptions(screen.getByLabelText("Tipo de documento"), "PASAPORTE")
     const criterion = screen.getByLabelText("Criterio de búsqueda")
-    await user.type(criterion, "f-1")
+    await user.type(criterion, "FICTICIO001")
     await user.click(screen.getByRole("button", { name: "Buscar" }))
     await waitFor(() => expect(criterion).toHaveAttribute("aria-invalid", "true"))
     expect(criterion).toHaveAccessibleDescription("El número no tiene el formato de su tipo de documento.")
@@ -162,6 +162,20 @@ describe("ficha de paciente (HU004)", () => {
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }))
     expect(await screen.findByRole("heading", { level: 1, name: "Paciente Ficticia Ejemplo Editada" })).toBeInTheDocument()
     expect(body).toEqual({ family_names: "Ejemplo Editada" })
+  })
+
+  // Autorrevisión: reescribir el mismo documento en minúsculas enviaba un PATCH
+  // sin efecto, que el backend audita como patient.update.
+  test("reescribir el mismo documento en minúsculas o con espacios no cuenta como cambio", async () => {
+    const { bff, user } = await start()
+    await openPatientFile(user)
+    await user.click(screen.getByRole("button", { name: "Editar datos" }))
+    const number = await screen.findByLabelText("Número de documento")
+    await user.clear(number)
+    await user.type(number, " ficticio001 ")
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }))
+    expect(await screen.findByRole("status")).toHaveTextContent("No hay cambios que guardar.")
+    expect(bff.calls.filter((c) => c.startsWith("PATCH"))).toEqual([])
   })
 
   test("guardar sin cambios no llama al servidor", async () => {
