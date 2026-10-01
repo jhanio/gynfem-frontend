@@ -30,6 +30,8 @@ function normalizeDocument(type: string | undefined, number: string): string | n
   const clean = number.trim().toUpperCase()
   return DOCUMENT_FORMAT[type ?? ""]?.test(clean) ? clean : null
 }
+// Mínimo de letras o dígitos de una búsqueda por nombre (NOMBRE_BUSQUEDA_MIN).
+const NAME_SEARCH_MIN = 3
 // En la búsqueda el formato lo valida el modelo entero (`loc: ["body"]`); al
 // registrar o editar, el campo.
 const invalidDocumentNumber = (loc: string[]) => fail(422, "validation_error", "La solicitud no es válida.", [{ loc, type: "document_number_format" }])
@@ -103,6 +105,9 @@ export function mockBff(options: { signedIn?: Session; patients?: Patient[]; use
       const body = (await request.json()) as { name?: string; document_type?: string; document_number?: string; limit: number; offset: number }
       const documentNumber = body.document_number === undefined ? undefined : normalizeDocument(body.document_type, body.document_number)
       if (documentNumber === null) return invalidDocumentNumber(["body"])
+      if (body.name !== undefined && (body.name.normalize("NFKD").match(/[\p{L}\p{N}]/gu) ?? []).length < NAME_SEARCH_MIN) {
+        return fail(422, "validation_error", "La solicitud no es válida.", [{ loc: ["body"], type: "search_criterion_required" }])
+      }
       const all = [...bff.patients.values()].filter((p) => body.name !== undefined
         ? `${p.given_names} ${p.family_names}`.toLowerCase().split(" ").some((word) => word.startsWith(body.name!.toLowerCase()))
         : p.document_type === body.document_type && p.document_number === documentNumber)
@@ -134,7 +139,10 @@ export function mockBff(options: { signedIn?: Session; patients?: Patient[]; use
       if (denied) return denied
       const patient = bff.patients.get(String(params.id))
       if (!patient) return fail(404, "patient_not_found", "Paciente no encontrada.")
-      const updated = { ...patient, ...((await request.json()) as Partial<Patient>) }
+      const changes = (await request.json()) as Partial<Patient>
+      const documentNumber = changes.document_number === undefined ? undefined : normalizeDocument(changes.document_type, changes.document_number)
+      if (documentNumber === null) return invalidDocumentNumber(["body", "document_number"])
+      const updated = { ...patient, ...changes, ...(documentNumber === undefined ? {} : { document_number: documentNumber }) }
       bff.patients.set(patient.id, updated)
       return json(updated)
     }),

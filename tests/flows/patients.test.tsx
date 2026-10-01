@@ -60,9 +60,8 @@ describe("búsqueda de pacientes (sin listado general)", () => {
     await waitFor(() => expect(screen.getAllByRole("button", { name: /Ver ficha/ })).toHaveLength(20))
   })
 
-  test("un 422 del servidor se muestra junto al criterio, con el texto de su regla", async () => {
+  test("un nombre demasiado corto (422) se muestra junto al criterio, con el texto de su regla", async () => {
     const { user } = await start()
-    server.use(http.post("*/api/v1/patients/search", () => HttpResponse.json(uniformError("validation_error", "La solicitud no es válida.", [{ loc: ["body"], type: "search_criterion_required" }]), { status: 422 })))
     await user.click(screen.getByRole("button", { name: "Nombre" }))
     await user.type(screen.getByLabelText("Criterio de búsqueda"), "ab")
     await user.click(screen.getByRole("button", { name: "Buscar" }))
