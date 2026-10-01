@@ -134,4 +134,44 @@ describe("activar, desactivar y asignar rol", () => {
     await user.click(within(rowOf("usuario.ficticio2@gynfem.test")).getByRole("button", { name: "Desactivar" }))
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo completar la operación")
   })
+
+  // Verificación contra producción (Fase 15): sin estado pendiente, los clics
+  // repetidos dejaron 9 user.deactivate y 1 user.activate en audit_log.
+  test("clics repetidos mientras la petición sigue en curso envían una sola y la fila queda bloqueada", async () => {
+    const { bff, user } = await openUserAdmin()
+    const email = "usuario.ficticio2@gynfem.test"
+    let release = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    let calls = 0
+    server.use(http.post("*/api/v1/users/:id/deactivate", async ({ params }) => {
+      calls++
+      await held
+      return HttpResponse.json({ ...bff.users.find((u) => u.id === params.id), is_active: false })
+    }))
+    const button = within(rowOf(email)).getByRole("button", { name: "Desactivar" })
+    await user.click(button)
+    await user.click(button)
+    await user.click(button)
+    expect(within(rowOf(email)).getByRole("button")).toBeDisabled()
+    expect(within(rowOf(email)).getByLabelText(`Rol de ${email}`)).toBeDisabled()
+    // Las demás filas siguen disponibles.
+    expect(within(rowOf("usuario.ficticio3@gynfem.test")).getByRole("button", { name: "Desactivar" })).toBeEnabled()
+
+    release()
+    expect(await within(rowOf(email)).findByRole("button", { name: "Activar" })).toBeEnabled()
+    expect(calls).toBe(1)
+  })
+
+  test("la fila se actualiza con la respuesta del servidor, sin esperar a releer la lista", async () => {
+    const { bff, user } = await openUserAdmin()
+    const email = "usuario.ficticio2@gynfem.test"
+    // El listado seguiría devolviendo el estado anterior: la fila no depende de él.
+    server.use(http.post("*/api/v1/users/:id/deactivate", ({ params }) => HttpResponse.json({ ...bff.users.find((u) => u.id === params.id), is_active: false })))
+    const listReads = () => bff.calls.filter((c) => c === "GET /api/v1/users").length
+    const readsBefore = listReads()
+    await user.click(within(rowOf(email)).getByRole("button", { name: "Desactivar" }))
+    expect(await within(rowOf(email)).findByRole("cell", { name: "Inactivo" })).toBeInTheDocument()
+    expect(within(rowOf(email)).getByRole("button", { name: "Activar" })).toBeInTheDocument()
+    expect(listReads()).toBe(readsBefore)
+  })
 })

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { isOutcomeUnknown, splitValidation } from "@/lib/api/errors"
-import type { Role, User, UserInput } from "@/lib/api/types"
+import type { Page, Role, User, UserInput } from "@/lib/api/types"
 import { type DescribedError, UNKNOWN_OUTCOME_MESSAGE, describeError } from "@/lib/error-messages"
 import { USERS_PAGE_SIZE, createUser, listUsers, setUserActive, updateUser } from "@/services/users"
 import { ErrorNotice, FieldError, Loading, Pager, StatusNotice } from "@/components/ui/Notices"
@@ -10,6 +10,8 @@ import { useLoad } from "@/components/ui/use-load"
 
 const EMPTY: UserInput = { email: "", full_name: "", role: "medico", password: "" }
 const ROLES: ReadonlyArray<{ value: Role; label: string }> = [{ value: "medico", label: "Médico" }, { value: "administrador", label: "Administrador" }]
+
+type SavedRows = { page: Page<User> | null; byId: Record<string, User> }
 
 const describeWrite = (caught: unknown): DescribedError =>
   isOutcomeUnknown(caught) ? { ...describeError(caught), message: UNKNOWN_OUTCOME_MESSAGE } : describeError(caught)
@@ -23,6 +25,8 @@ export function UserAdministration() {
   const [error, setError] = useState<DescribedError | null>(null)
   const [notice, setNotice] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set())
+  const [saved, setSaved] = useState<SavedRows>({ page: null, byId: {} })
   const users = useLoad(() => listUsers(offset), `users:${offset}`)
 
   const set = (field: keyof UserInput, value: string) => setForm({ ...form, [field]: value })
@@ -48,17 +52,29 @@ export function UserAdministration() {
     }
   }
 
-  async function change(operation: () => Promise<User>) {
+  // Una escritura por fila a la vez: mientras dura, sus controles quedan
+  // deshabilitados. Sin esto, cada clic de más era otra petición auditada.
+  async function change(id: string, operation: () => Promise<User>) {
+    if (pendingIds.has(id)) return
     setError(null)
     setNotice("")
+    setPendingIds((current) => new Set([...current, id]))
+    const page = users.data
     try {
-      await operation()
+      // La fila muestra lo que respondió el servidor, sin esperar a releer la lista.
+      const user = await operation()
+      setSaved((current) => ({ page, byId: { ...(current.page === page ? current.byId : {}), [user.id]: user } }))
     } catch (caught) {
       setError(describeWrite(caught))
+      // No se sabe qué quedó guardado: se vuelve a leer la página.
+      users.reload()
+    } finally {
+      setPendingIds((current) => new Set([...current].filter((pending) => pending !== id)))
     }
-    // Se vuelve a leer la página: la tabla muestra lo que dice el servidor.
-    users.reload()
   }
+
+  // Las respuestas guardadas solo valen sobre la página a la que se aplicaron.
+  const rows = (users.data?.items ?? []).map((user) => (saved.page === users.data ? saved.byId[user.id] : undefined) ?? user)
 
   const input = (field: "email" | "full_name" | "password", label: string, type: string, autoComplete: string) => (
     <div>
@@ -119,20 +135,24 @@ export function UserAdministration() {
                   <tr><th className="p-4">Usuario</th><th className="p-4">Rol</th><th className="p-4">Estado</th><th className="p-4">Acción</th></tr>
                 </thead>
                 <tbody>
-                  {users.data.items.map((user) => (
-                    <tr className="border-t border-[#d9e1e5]" key={user.id}>
-                      <td className="p-4"><strong>{user.full_name}</strong><span className="block text-[#60727d]">{user.email ?? "Sin correo"}</span></td>
-                      <td className="p-4">
-                        <select className="select" aria-label={`Rol de ${user.email ?? user.full_name}`} value={user.role} onChange={(e) => void change(() => updateUser(user.id, { role: e.target.value as Role }))}>
-                          {ROLES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-                        </select>
-                      </td>
-                      <td className="p-4">{user.is_active ? "Activo" : "Inactivo"}</td>
-                      <td className="p-4">
-                        <button type="button" className="font-bold text-[#0f5962]" onClick={() => void change(() => setUserActive(user.id, !user.is_active))}>{user.is_active ? "Desactivar" : "Activar"}</button>
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.map((user) => {
+                    const isPending = pendingIds.has(user.id)
+                    const action = user.is_active ? "Desactivar" : "Activar"
+                    return (
+                      <tr className="border-t border-[#d9e1e5]" key={user.id} aria-busy={isPending}>
+                        <td className="p-4"><strong>{user.full_name}</strong><span className="block text-[#60727d]">{user.email ?? "Sin correo"}</span></td>
+                        <td className="p-4">
+                          <select className="select disabled:opacity-60" aria-label={`Rol de ${user.email ?? user.full_name}`} value={user.role} disabled={isPending} onChange={(e) => void change(user.id, () => updateUser(user.id, { role: e.target.value as Role }))}>
+                            {ROLES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+                          </select>
+                        </td>
+                        <td className="p-4">{user.is_active ? "Activo" : "Inactivo"}</td>
+                        <td className="p-4">
+                          <button type="button" className="font-bold text-[#0f5962] disabled:opacity-60" disabled={isPending} onClick={() => void change(user.id, () => setUserActive(user.id, !user.is_active))}>{isPending ? "Guardando…" : action}</button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
