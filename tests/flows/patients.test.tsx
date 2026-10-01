@@ -68,6 +68,30 @@ describe("búsqueda de pacientes (sin listado general)", () => {
     await user.click(screen.getByRole("button", { name: "Buscar" }))
     expect(await screen.findByRole("alert")).toHaveTextContent("Indica un documento o un nombre más preciso.")
   })
+
+  // Verificación contra producción (Fase 15): dos búsquedas respondieron 422.
+  test("un número de documento en minúsculas se envía en mayúsculas y encuentra a la paciente", async () => {
+    const { user } = await start()
+    await user.selectOptions(screen.getByLabelText("Tipo de documento"), "PASAPORTE")
+    await user.type(screen.getByLabelText("Criterio de búsqueda"), " ficticio001 ")
+    await user.click(screen.getByRole("button", { name: "Buscar" }))
+    expect(await screen.findByRole("button", { name: /Ver ficha/ })).toHaveTextContent("Paciente Ficticia Ejemplo Uno")
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  test("un 422 de búsqueda marca el campo y se explica junto a él; al corregir, desaparece", async () => {
+    const { user } = await start()
+    await user.selectOptions(screen.getByLabelText("Tipo de documento"), "PASAPORTE")
+    const criterion = screen.getByLabelText("Criterio de búsqueda")
+    await user.type(criterion, "f-1")
+    await user.click(screen.getByRole("button", { name: "Buscar" }))
+    await waitFor(() => expect(criterion).toHaveAttribute("aria-invalid", "true"))
+    expect(criterion).toHaveAccessibleDescription("El número no tiene el formato de su tipo de documento.")
+    expect(screen.queryByText("No encontramos pacientes con esos datos.")).not.toBeInTheDocument()
+    await user.type(criterion, "2")
+    expect(criterion).toHaveAttribute("aria-invalid", "false")
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
 })
 
 describe("registro de paciente (HU003)", () => {

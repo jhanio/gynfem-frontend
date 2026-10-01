@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Search, UserPlus } from "lucide-react"
+import { AlertCircle, Search, UserPlus } from "lucide-react"
 import { splitValidation } from "@/lib/api/errors"
 import type { DocumentType, Page, PatientSummary } from "@/lib/api/types"
 import { type DescribedError, describeError } from "@/lib/error-messages"
@@ -10,6 +10,8 @@ import { ErrorNotice, Pager, StatusNotice } from "@/components/ui/Notices"
 import { DOCUMENT_TYPES } from "./document-types"
 
 type Props = { notice?: string; onSelect: (patientId: string) => void; onRegister: () => void; onQuick: () => void }
+
+const CRITERION_ERROR_ID = "patient-search-criterion-error"
 
 const modeClass = (isActive: boolean) =>
   `flex-1 rounded-md px-3 py-2 text-sm font-bold ${isActive ? "bg-white text-[#0f5962] shadow-sm" : "text-[#60727d]"}`
@@ -23,19 +25,23 @@ export function PatientSearch({ notice, onSelect, onRegister, onQuick }: Props) 
   const [criterion, setCriterion] = useState<SearchCriterion | null>(null)
   const [page, setPage] = useState<Page<PatientSummary> | null>(null)
   const [error, setError] = useState<DescribedError | null>(null)
+  const [criterionError, setCriterionError] = useState("")
   const [isSearching, setIsSearching] = useState(false)
 
   async function load(next: SearchCriterion, offset: number) {
     setError(null)
+    setCriterionError("")
     setIsSearching(true)
     try {
       setPage(await searchPatients(next, offset))
       setCriterion(next)
     } catch (caught) {
-      // El texto de la regla que falló (p. ej. nombre demasiado corto) sale del 422.
+      // Un 422 habla del criterio escrito (p. ej. formato del documento, nombre
+      // demasiado corto): el texto de la regla va junto al campo. Lo demás, abajo.
       const { fields, form } = splitValidation(caught)
       const validation = [...Object.values(fields), ...form][0]
-      setError(validation ? { message: validation, reference: null } : describeError(caught))
+      if (validation) setCriterionError(validation)
+      else setError(describeError(caught))
       setPage(null)
     } finally {
       setIsSearching(false)
@@ -52,6 +58,12 @@ export function PatientSearch({ notice, onSelect, onRegister, onQuick }: Props) 
     setMode(next)
     setPage(null)
     setError(null)
+    setCriterionError("")
+  }
+
+  function changeQuery(value: string) {
+    setQuery(value)
+    setCriterionError("")
   }
 
   return (
@@ -71,13 +83,22 @@ export function PatientSearch({ notice, onSelect, onRegister, onQuick }: Props) 
           <button type="button" onClick={() => changeMode("document")} className={modeClass(mode === "document")}>Documento exacto</button>
           <button type="button" onClick={() => changeMode("name")} className={modeClass(mode === "name")}>Nombre</button>
         </div>
-        <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleSubmit}>
+        <form className="flex flex-col gap-3 sm:flex-row sm:items-start" onSubmit={handleSubmit}>
           {mode === "document" && (
-            <select className="select sm:w-44" aria-label="Tipo de documento" value={documentType} onChange={(e) => setDocumentType(e.target.value as DocumentType)}>
+            <select className="select sm:w-44" aria-label="Tipo de documento" value={documentType} onChange={(e) => { setDocumentType(e.target.value as DocumentType); setCriterionError("") }}>
               {DOCUMENT_TYPES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
             </select>
           )}
-          <input className="input" aria-label="Criterio de búsqueda" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={mode === "document" ? "Número de documento" : "Nombre o apellido"} />
+          <div className="flex-1">
+            <input
+              className={`input ${criterionError ? "border-[#c53d3d]" : ""}`} aria-label="Criterio de búsqueda" value={query} onChange={(e) => changeQuery(e.target.value)}
+              placeholder={mode === "document" ? "Número de documento" : "Nombre o apellido"}
+              aria-invalid={Boolean(criterionError)} aria-describedby={criterionError ? CRITERION_ERROR_ID : undefined}
+            />
+            {criterionError && (
+              <p id={CRITERION_ERROR_ID} role="alert" className="mt-1 flex items-center gap-1 text-xs text-[#b42318]"><AlertCircle className="size-3" />{criterionError}</p>
+            )}
+          </div>
           <button className="btn-primary disabled:opacity-60" disabled={isSearching || query.trim() === ""}>{isSearching ? "Buscando…" : "Buscar"}</button>
         </form>
         {error && <div className="mt-5"><ErrorNotice error={error} /></div>}

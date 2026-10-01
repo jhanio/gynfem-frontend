@@ -23,6 +23,9 @@ const json = (body: unknown, status = 200) => HttpResponse.json(body as Record<s
 const fail = (status: number, code: string, message: string, details?: Array<{ loc: Array<string | number>; type: string }>) =>
   json(uniformError(code, message, details), status)
 export const unauthorized = () => fail(401, "invalid_token", "El token de acceso no es válido.")
+// El backend solo admite mayúsculas y dígitos en el número de documento.
+const DOCUMENT_NUMBER = /^[A-Z0-9]+$/
+const invalidDocumentNumber = () => fail(422, "validation_error", "La solicitud no es válida.", [{ loc: ["body", "document_number"], type: "document_number_format" }])
 
 function predictionFor(values: Record<string, number>) {
   const bmi = SCHEMA.fields.find((f) => f.name === "bmi_kg_m2")!
@@ -91,9 +94,11 @@ export function mockBff(options: { signedIn?: Session; patients?: Patient[]; use
       const denied = guard("medico")
       if (denied) return denied
       const body = (await request.json()) as { name?: string; document_type?: string; document_number?: string; limit: number; offset: number }
+      // Como el backend: el número se compara tal cual, sin pasarlo a mayúsculas.
+      if (body.document_number !== undefined && !DOCUMENT_NUMBER.test(body.document_number)) return invalidDocumentNumber()
       const all = [...bff.patients.values()].filter((p) => body.name !== undefined
         ? `${p.given_names} ${p.family_names}`.toLowerCase().split(" ").some((word) => word.startsWith(body.name!.toLowerCase()))
-        : p.document_type === body.document_type && p.document_number === body.document_number?.toUpperCase())
+        : p.document_type === body.document_type && p.document_number === body.document_number)
       return json({ items: all.slice(body.offset, body.offset + body.limit).map(summaryOf), limit: body.limit, offset: body.offset, has_more: all.length > body.offset + body.limit })
     }),
     http.post("*/api/v1/patients", async ({ request }) => {
@@ -101,6 +106,7 @@ export function mockBff(options: { signedIn?: Session; patients?: Patient[]; use
       const denied = guard("medico")
       if (denied) return denied
       const input = (await request.json()) as Omit<Patient, "id" | "created_at" | "updated_at">
+      if (!DOCUMENT_NUMBER.test(input.document_number)) return invalidDocumentNumber()
       if ([...bff.patients.values()].some((p) => p.document_type === input.document_type && p.document_number === input.document_number)) {
         return fail(409, "patient_already_exists", "Ya hay una paciente activa con ese documento.")
       }

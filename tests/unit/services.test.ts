@@ -105,6 +105,25 @@ describe("pacientes", () => {
     expect(page.items[0].document_number_masked).toBe("********001")
   })
 
+  test("el número de documento viaja sin espacios y en mayúsculas, al buscar y al registrar", async () => {
+    const bodies: unknown[] = []
+    server.use(
+      http.post("*/api/v1/patients/search", async ({ request }) => { bodies.push(await request.json()); return HttpResponse.json({ items: [], limit: 20, offset: 0, has_more: false }) }),
+      http.post("*/api/v1/patients", async ({ request }) => { bodies.push(await request.json()); return HttpResponse.json(PATIENT, { status: 201 }) }),
+      http.patch(`*/api/v1/patients/${PATIENT.id}`, async ({ request }) => { bodies.push(await request.json()); return HttpResponse.json(PATIENT) }),
+    )
+    await patients.searchPatients({ kind: "document", documentType: "PASAPORTE", documentNumber: " ficticio001 " }, 0)
+    await patients.createPatient({ document_type: "PASAPORTE", document_number: " ficticio002", given_names: "Paciente Ficticia", family_names: "Ejemplo Dos" })
+    await patients.updatePatient(PATIENT.id, { document_type: "PASAPORTE", document_number: "ficticio003" })
+    await patients.updatePatient(PATIENT.id, { given_names: "Paciente Ficticia" })
+    expect(bodies).toEqual([
+      { document_type: "PASAPORTE", document_number: "FICTICIO001", limit: patients.PATIENTS_PAGE_SIZE, offset: 0 },
+      { document_type: "PASAPORTE", document_number: "FICTICIO002", given_names: "Paciente Ficticia", family_names: "Ejemplo Dos" },
+      { document_type: "PASAPORTE", document_number: "FICTICIO003" },
+      { given_names: "Paciente Ficticia" },
+    ])
+  })
+
   test("la búsqueda por nombre envía un solo criterio y el desplazamiento", async () => {
     let body: unknown
     server.use(http.post("*/api/v1/patients/search", async ({ request }) => { body = await request.json(); return HttpResponse.json({ items: [], limit: 20, offset: 20, has_more: false }) }))
