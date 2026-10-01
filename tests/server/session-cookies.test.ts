@@ -42,6 +42,31 @@ describe("cookies de sesión (decisión de sesión: BFF con httpOnly)", () => {
     }
   })
 
+  // El prefijo y Secure dependen del protocolo y van siempre juntos: un
+  // navegador rechaza una cookie __Host- sin Secure, y descarta una Secure
+  // recibida por http (salvo en localhost).
+  test.each([
+    ["https directo", httpsRequest, true],
+    ["http tras un proxy https", new Request("http://interno/api/session", { headers: { "x-forwarded-proto": "https" } }), true],
+    ["http://localhost", localRequest, false],
+  ])("en %s, __Host- y Secure aparecen juntos o no aparecen", (_name, request, isSecure) => {
+    for (const cookie of [...sessionCookies(request, tokens), ...clearedSessionCookies(request)]) {
+      expect(cookie.startsWith("__Host-")).toBe(isSecure)
+      expect(cookie.split("; ").includes("Secure")).toBe(isSecure)
+      expect(cookie.split("; ")).toEqual(expect.arrayContaining(["HttpOnly", "SameSite=Strict", "Path=/"]))
+    }
+  })
+
+  test("en https no se acepta una cookie sin el prefijo: no puede venir de un subdominio ni de http", () => {
+    const request = bffRequest("GET", "/api/session", { cookies: { gf_at: "a.b.c", gf_rt: "r" } })
+    expect(readSessionCookies(request)).toEqual({ accessToken: null, refreshToken: null })
+  })
+
+  test("en http://localhost se leen las cookies sin prefijo", () => {
+    const request = new Request("http://localhost:3000/api/session", { headers: { host: "localhost:3000", cookie: "gf_at=a.b.c; gf_rt=r" } })
+    expect(readSessionCookies(request)).toEqual({ accessToken: "a.b.c", refreshToken: "r" })
+  })
+
   test("readSessionCookies lee ambas cookies de la petición", () => {
     const request = bffRequest("GET", "/api/session", { cookies: { "__Host-gf_at": "a.b.c", "__Host-gf_rt": "r", otra: "x" } })
     expect(readSessionCookies(request)).toEqual({ accessToken: "a.b.c", refreshToken: "r" })
