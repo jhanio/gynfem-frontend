@@ -239,7 +239,8 @@ leen del generador: si una cabecera desaparece de `lib/security-headers.ts`, el
 guion sigue exigiéndola. Una prueba comprueba que ambas listas coinciden.
 
 **Además, a mano en el navegador:** que no haya violaciones de la CSP en la
-consola, recorrer el guion de la Sección 12 con las cuentas de verificación, y
+consola, recorrer el guion de la Sección 12 con las cuentas de verificación
+(incluidas las cookies `__Host-` de la Sección 12.4), y
 revisar el ancho de tableta (768 px y 1024 px) **redimensionando la ventana**,
 nunca con un `iframe`, porque la app no se deja incrustar (Sección 3). En una
 vista previa, la consola mostrará además que la CSP bloquea la barra de
@@ -351,6 +352,15 @@ El navegador solo habla con su propio origen. Los Route Handlers de `app/api/`
   (refresco, de sesión: se pierde al cerrar el navegador). Ambas `HttpOnly`,
   `Secure`, `SameSite=Strict`, `Path=/`. En `http://localhost` se llaman
   `gf_at` y `gf_rt`, sin `Secure`.
+- **El prefijo y `Secure` dependen del protocolo de la petición**
+  (`lib/server/session-cookies.ts`): hay https si `x-forwarded-proto` es
+  `https` (Vercel) o la URL lo es. Van siempre juntos: un navegador rechaza una
+  cookie `__Host-` que no sea `Secure`, y por `http` no enviaría una `Secure`,
+  así que con `npm run start` en local no habría sesión. Por eso en la
+  verificación local se vieron `gf_at`/`gf_rt` sin `Secure`: es lo esperado y
+  no ocurre en producción. En https el BFF **no lee** cookies sin prefijo. Lo
+  fija `tests/server/session-cookies.test.ts`; en Vercel se comprueba a mano
+  (Sección 12.4).
 - **Por qué no en memoria ni en `localStorage`:** un token legible por
   JavaScript queda al alcance de cualquier script inyectado, y la CSP mantiene
   `'unsafe-inline'`. Con cookies `httpOnly` no hay token que robar, y la sesión
@@ -384,6 +394,10 @@ clínicas de 1–3 s).
   «Iniciando el servicio. Puede tardar hasta un minuto…» como estado, nunca
   como error. Tras 14 min sin respuestas (Render suspende a los 15), toda
   petición despierta primero.
+- **Arranque en frío medido desde la interfaz (Fase 15).** Con Render dormido
+  a las 14:47:31 UTC, `/api/wake` tardó **42.59 s** (≈35 s con cronómetro
+  manual), dentro de los 53.1 s medidos en la Fase 12 y de los 70 s de límite.
+  El aviso «Iniciando el servicio» se mostró y no hubo error.
 - **Lecturas** (GET, la búsqueda de pacientes y `/predict`): dos reintentos, a
   1 s y 3 s, ante fallo de red, espera agotada, 502, 503 o 504.
 - **Escrituras: nunca se reintentan solas.** Ante un 503 no se guardó nada: se
@@ -428,7 +442,7 @@ verificación (rol médico y rol administrador). Nunca con datos reales.
 
 | Dato | Valor | Por qué es inequívocamente ficticio |
 | --- | --- | --- |
-| Tipo y número de documento | `PASAPORTE` · `FICTICIOF15A` | Un DNI son 8 dígitos y cualquier combinación puede pertenecer a alguien. Este número son letras que dicen «ficticio»: ningún pasaporte se numera así, y el backend lo acepta (4–20 caracteres alfanuméricos) |
+| Tipo y número de documento | `PASAPORTE` · `FICTICIOF15` | Un DNI son 8 dígitos y cualquier combinación puede pertenecer a alguien. Este número son letras que dicen «ficticio»: ningún pasaporte se numera así, y el backend lo acepta (4–20 caracteres alfanuméricos) |
 | Nombres y apellidos | `Paciente Ficticia` · `Sintetica Fquince` | Lo declaran en el propio texto. El backend no admite dígitos en un nombre |
 | Usuario de prueba | `usuario.sintetico.f15@gynfem.test` | `.test` es un dominio reservado (RFC 2606) |
 
@@ -453,4 +467,25 @@ Una fila por verificación. Los identificadores son UUID opacos.
 
 | Fecha (UTC) | Ventana horaria | Actor | Pacientes sintéticas (id) | Usuario sintético (id) | Estado |
 | --- | --- | --- | --- | --- | --- |
-| _pendiente: se rellena al ejecutar la verificación de la Fase 15_ | | | | | |
+| 2026-10-01 (verificación de la Fase 15, en local contra la API de producción) | 14:00–14:25 | Médica `4f826907-0ff1-4bac-98fa-2d60946e0172` · Administradora `923046e7-a79b-40e7-8ad6-04cc9efbb742` | `1ec61d07-5057-44d2-a698-41d39883f613` (`PASAPORTE` · `FICTICIOF15`), creada 14:06:48; medición de corrección `8f9788bd-a071-4924-ba82-f497df4f2679` | `437aa4ae-ea4c-46ef-97ed-9efaf18cbc10` (`usuario.sintetico.f15@gynfem.test`), creado 14:23:20 | Paciente de baja lógica 14:21:33 (`deleted_at` confirmado por SQL). Usuario desactivado |
+
+En `audit_log`, esa ventana incluye 9 `user.deactivate` y 1 `user.activate`
+sobre el usuario sintético en 23 s: clics repetidos porque la fila no mostraba
+que la petición seguía en curso. Corregido en la Fase 15 (cada fila se bloquea
+mientras dura su escritura y se actualiza con la respuesta del servidor).
+
+### 12.4 Cookies de sesión en Vercel (HTTPS)
+
+La verificación de la Fase 15 se hizo en local por `http`, donde las cookies
+no llevan prefijo ni `Secure` (Sección 11.1). Tras el despliegue de
+producción, con una cuenta de verificación y sin datos nuevos:
+
+1. Iniciar sesión en el dominio de producción.
+2. Herramientas del navegador → *Application → Cookies*: deben existir
+   `__Host-gf_at` y `__Host-gf_rt`, ambas con `HttpOnly`, `Secure`,
+   `SameSite=Strict`, `Path=/` y **sin** `Domain`. No debe existir ninguna
+   `gf_at` ni `gf_rt` sin prefijo.
+3. En la consola, `document.cookie` no las muestra; `localStorage` y
+   `sessionStorage` siguen vacíos.
+4. Recargar la página: la sesión se conserva. Cerrar sesión: ambas cookies
+   desaparecen.
