@@ -2,11 +2,11 @@
 
 - **Alcance:** cómo está desplegado el frontend, cómo se reproduce la
   configuración, cómo se verifica cada despliegue y cómo se revierte.
-- **Fecha:** 2026-09-28 — Fase 14, PR #4.
+- **Fecha:** 2026-09-28 — Fase 14, PR #4. Actualizado en la Fase 15
+  (integración con la API), PR #6.
 - **Relación con el backend:** la API vive en Render
-  (`gynfem-backend/docs/DEPLOYMENT.md`, Sección 7). En esta fase el frontend
-  **no** la llama todavía: publica la interfaz con datos simulados. La
-  conexión real llega en la Fase 15.
+  (`gynfem-backend/docs/DEPLOYMENT.md`, Sección 7). Desde la Fase 15 el
+  frontend la usa a través de un BFF en Vercel (Sección 11).
 
 ---
 
@@ -19,8 +19,9 @@
 | Dominio de producción | **`https://gynfem-frontend.vercel.app`** (Settings → Domains) |
 | Rama de producción | `main`: cada commit en `main` despliega a producción |
 | Otras ramas | Generan despliegues de **vista previa**, protegidos (Sección 5) |
-| Configuración versionada | `vercel.json` (framework y comandos), `next.config.ts` + `lib/security-headers.ts` (cabeceras), `package.json` → `engines.node` (Node 24) |
-| Datos | Solo simulados y evidentemente ficticios (`services/clinical.ts`) |
+| Configuración versionada | `vercel.json` (framework, comandos y región de las funciones), `next.config.ts` + `lib/security-headers.ts` (cabeceras), `package.json` → `engines.node` (Node 24) |
+| Funciones | Route Handlers del BFF (`app/api/`), región **`pdx1`**, Fluid Compute activo (Sección 11.3) |
+| Datos | Los de la API real. Ningún dato real de pacientes hasta la Fase 17: solo datos sintéticos de verificación (Sección 12) |
 
 **Dominio de producción ≠ URL de despliegue.** Vercel da a cada despliegue una
 URL única (`<proyecto>-<hash>-<cuenta>.vercel.app`) y además un dominio de
@@ -34,39 +35,48 @@ Se configuran en *Settings → Environment Variables*, **solo con el ámbito
 Production** (sin Preview ni Development). La plantilla comentada es
 `.env.example`; en local se copia a `.env.local`, que nunca se versiona.
 
-| Variable | Pública | Para qué | Formato | Por qué es seguro exponerla |
-| --- | --- | --- | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | Sí | Origen de la API. Hoy solo entra en `connect-src` de la CSP; la app la usa en la Fase 15 | `https://<servicio>.onrender.com`, sin ruta ni barra final | Ya es pública en la documentación del backend y visible en cualquier petición de red |
-| `NEXT_PUBLIC_SUPABASE_URL` | Sí | Autenticación desde el navegador (Fase 15) y `connect-src` | `https://<project-ref>.supabase.co`, sin barra final | Identifica el proyecto pero no da acceso a nada |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Sí | Clave de Supabase Auth para el navegador (Fase 15) | `sb_publishable_…` | Está diseñada para el navegador: RLS impide que llegue a las tablas (`gynfem-backend/docs/SECURITY.md`) |
+Desde la Fase 15 las tres son **de servidor**: las lee solo el BFF
+(`lib/server/env.ts`). **No existe ninguna variable `NEXT_PUBLIC_`**, así que
+ninguna se copia en el JavaScript del navegador.
+
+| Variable | Para qué | Formato |
+| --- | --- | --- |
+| `API_BASE_URL` | Origen de la API al que reenvía el BFF | `https://<servicio>.onrender.com`, sin ruta ni barra final |
+| `SUPABASE_URL` | Supabase Auth: iniciar, refrescar y cerrar la sesión desde el BFF | `https://<project-ref>.supabase.co`, sin barra final |
+| `SUPABASE_PUBLISHABLE_KEY` | Clave de Supabase Auth | `sb_publishable_…`. Es la clave **publicable**: RLS impide que llegue a las tablas (`gynfem-backend/docs/SECURITY.md`) |
+
+**Migración desde la Fase 14 (una vez).** En Vercel → *Settings → Environment
+Variables*, ámbito Production: crear `API_BASE_URL`, `SUPABASE_URL` y
+`SUPABASE_PUBLISHABLE_KEY` con los mismos valores que tenían
+`NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_SUPABASE_URL` y
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, y **borrar las tres antiguas**. Después,
+*Redeploy*.
 
 **De dónde sale cada valor:**
 
-- `NEXT_PUBLIC_API_BASE_URL`: la URL pública del servicio `gynfem-api` en Render
-  (Render → `gynfem-api` → cabecera del servicio). Hoy es
+- `API_BASE_URL`: la URL pública del servicio `gynfem-api` en Render. Hoy es
   `https://gynfem-api.onrender.com` (`gynfem-backend/docs/DEPLOYMENT.md`, Sección 1).
-- `NEXT_PUBLIC_SUPABASE_URL`: Supabase → *Project Settings → Data API* (o
-  *API*) → *Project URL*.
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Supabase → *Project Settings → API
-  Keys* → la clave **publicable** (`sb_publishable_…`), nunca la secreta.
+- `SUPABASE_URL`: Supabase → *Project Settings → Data API* (o *API*) →
+  *Project URL*.
+- `SUPABASE_PUBLISHABLE_KEY`: Supabase → *Project Settings → API Keys* → la
+  clave **publicable** (`sb_publishable_…`), nunca la secreta.
 
 **Reglas (las fija `tests/unit/deployment-config.test.ts`, que recorre todo el
-código fuente: `app/`, `components/`, `lib/`, `services/`, `scripts/` y
-`next.config.ts`):**
+código fuente):**
 
-- Toda variable `NEXT_PUBLIC_` se **copia literalmente** en el JavaScript que
-  descarga el navegador **al compilar**. Cambiar un valor exige volver a
-  desplegar (*Deployments → … → Redeploy*).
 - **Nunca** en Vercel ni en este repositorio: la clave secreta de Supabase
   (`sb_secret_…` o `service_role`), la URL de la base de datos ni ninguna
   variable `GYNFEM_*` del backend. Viven solo en Render.
-- Solo existen esas tres variables públicas. Añadir otra exige una decisión
+- Solo existen esas tres variables y solo se leen en `lib/server/env.ts` y
+  `next.config.ts`. Añadir otra, o una `NEXT_PUBLIC_`, exige una decisión
   explícita y actualizar la prueba.
 - `next.config.ts` valida al compilar que las dos URL sean orígenes exactos
   (https, host en minúsculas, sin ruta, barra final, credenciales ni
   comodines). Si no lo son, **la compilación falla** y el error nombra la
   variable sin mostrar su valor. Vercel mantiene entonces el despliegue
   anterior.
+- Sin variables (una vista previa), la aplicación compila y carga, pero el BFF
+  responde 503 `not_configured` a todo: no puede llegar a la API.
 
 ## 3. Cabeceras de seguridad
 
@@ -99,28 +109,26 @@ Además, `poweredByHeader: false` quita `X-Powered-By: Next.js`, y
 
 ```text
 default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';
-img-src 'self' data: blob:; font-src 'self'; connect-src 'self' <API> <SUPABASE>;
+img-src 'self' data: blob:; font-src 'self'; connect-src 'self';
 frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none';
 upgrade-insecure-requests
 ```
 
-- `<API>` y `<SUPABASE>` salen de las variables de la Sección 2 al compilar.
-  En las vistas previas no existen, y `connect-src` se queda en `'self'`.
+- **`connect-src 'self'` (Fase 15).** El navegador solo llama a su propio
+  origen: a Render y a Supabase los llama el servidor (BFF). La CSP ya no
+  depende de ninguna variable, y es la misma en producción y en vistas previas.
 - **Por qué `'unsafe-inline'` en `script-src`:** Next inserta en línea sus
   scripts de arranque. La página es estática y no puede llevar un *nonce*,
   porque los nonces obligan a renderizar en cada petición. La alternativa con
   hashes (SRI) es experimental en Next 16. Se mitiga porque la app no inyecta
-  HTML (`dangerouslySetInnerHTML`) y React escapa el contenido. **Se revisa en
-  la Fase 15**, antes de que haya tokens de sesión en el navegador.
+  HTML (`dangerouslySetInnerHTML`; lo vigila `tests/unit/phase15-guards.test.ts`)
+  y React escapa el contenido. **Revisado en la Fase 15:** se mantiene, pero
+  el riesgo que justificaba revisarlo —un token de sesión al alcance de un
+  script inyectado— ya no existe: el token vive en cookies `httpOnly`.
 - En `next dev` se añade `'unsafe-eval'`, que React necesita para depurar, y
   se omite `upgrade-insecure-requests`, porque `next dev` sirve por
   `http://localhost`. Nunca en producción. `next start` en local sí la envía;
   si un navegador (Safari) fuerza https contra localhost, verifica con Chrome.
-- **Fase 15:** un origen nuevo que llame el navegador entra en `connect-src`
-  mediante variable, nunca con comodín. Las llamadas `fetch` a Render y a
-  Supabase Auth ya quedan cubiertas. Si se usa Supabase Realtime hará falta
-  `wss://<project-ref>.supabase.co` en `connect-src`, y si se sirven imágenes
-  desde Supabase Storage, su origen en `img-src`.
 
 ## 4. Configurar el proyecto en Vercel (una vez)
 
@@ -140,6 +148,8 @@ versiones del panel.
 2. **Settings → Environment Variables.** Crear las tres variables de la
    Sección 2 marcando **solo Production**. Se pegan los valores directamente
    en el panel.
+   **Settings → Functions.** Fluid Compute activo y, tras el primer despliegue
+   de la Fase 15, *Function Region* = `pdx1` (lo fija `vercel.json`; Sección 11.3).
 3. **Settings → Deployment Protection.** «Standard Protection» con **Vercel
    Authentication** activado. Sin *Protection Bypass for Automation*, sin
    *Shareable Links* y sin excepciones.
@@ -166,10 +176,12 @@ pública con datos reales o con acceso a la API sería una fuga.
    con acceso al proyecto. En Hobby no hay protección con contraseña; «All
    Deployments» también bloquearía producción, que debe ser pública.
 2. **Variables solo en Production.** Una vista previa se compila sin la
-   dirección de la API ni la de Supabase, y su CSP solo permite `'self'`.
+   dirección de la API ni la de Supabase: su BFF responde 503
+   `not_configured` y no puede llegar a ningún dato.
 3. **CORS del backend con un solo origen**: el dominio de producción
-   (Sección 8). Aunque una vista previa quedara expuesta, el navegador no
-   podría llamar a la API.
+   (Sección 8). Desde la Fase 15 el navegador ya no llama a la API (lo hace
+   el BFF, de servidor a servidor), así que CORS no interviene; se mantiene
+   cerrado a un solo origen como defensa adicional.
 4. **Tras fusionar una rama**, borrar sus despliegues de vista previa:
    *Deployments* → filtrar por la rama → *Delete* en cada uno. Que el panel
    diga «No Active Branches» solo significa que ya no hay alias de rama: los
@@ -191,12 +203,8 @@ comprueba primero la hora a la que terminó el despliegue antes de tocar ninguna
 configuración.
 
 ```bash
-npm run verify:deployment -- https://gynfem-frontend.vercel.app --connect https://gynfem-api.onrender.com,https://<project-ref>.supabase.co
+npm run verify:deployment -- https://gynfem-frontend.vercel.app
 ```
-
-`<project-ref>` es el de `NEXT_PUBLIC_SUPABASE_URL` (Sección 2). Si no lo
-tienes a mano, ejecuta el guion sin `--connect`: muestra el `connect-src` real
-para compararlo.
 
 El guion (`scripts/verify-deployment.ts`, con la lógica probada en
 `lib/deployment-checks.ts`) termina con código 1 si falla cualquier
@@ -210,9 +218,10 @@ comprobación:
 | cabecera X-Frame-Options … X-Robots-Tag | Cada cabecera de la Sección 3 con su valor exacto |
 | sin X-Powered-By / Server sin versión | No se anuncian el framework ni versiones |
 | CSP presente, `default-src 'self'`, `base-uri 'self'`, sin comodines, sin `'unsafe-eval'`, `frame-ancestors 'none'`, `object-src 'none'` | La política de la Sección 3 |
-| CSP connect-src exacto | Solo con `--connect`: `connect-src 'self'` más exactamente esos orígenes |
-| banner DATOS SIMULADOS / la raíz sirve el login | El HTML inicial es el login simulado |
+| CSP connect-src exacto | Exactamente `connect-src 'self'`: el navegador no llama a ningún otro origen |
+| sin banner de datos simulados | El modo simulado ya no existe (Fase 15) |
 | ninguna pantalla clínica sin sesión | El HTML inicial no contiene ninguna pantalla clínica |
+| `/api/session` y `/api/v1/prediction/schema` sin sesión | 401 `not_authenticated` con el formato uniforme, `Cache-Control: no-store` y sin fijar cookies. Con `--local` y sin variables se admite 503 `not_configured` |
 | paquete servido sin secretos | Ni el HTML inicial (con la carga RSC en línea) ni ningún script de `/_next/static` que referencie contiene `sb_secret_`, `service_role`, `postgres(ql)://`, variables `GYNFEM_*` ni JWT con rol distinto de `anon`. Los hallazgos se muestran recortados |
 | sin mapas de código publicados | Ningún `.js.map` responde 200 |
 | ruta inexistente responde 404 / errores sin trazas ni rutas internas | La 404 no contiene `node_modules`, rutas de disco, rutas de compilación de Vercel ni líneas de traza |
@@ -230,7 +239,8 @@ leen del generador: si una cabecera desaparece de `lib/security-headers.ts`, el
 guion sigue exigiéndola. Una prueba comprueba que ambas listas coinciden.
 
 **Además, a mano en el navegador:** que no haya violaciones de la CSP en la
-consola, recorrer el login simulado → Pacientes → ficha → evaluación, y
+consola, recorrer el guion de la Sección 12 con las cuentas de verificación
+(incluidas las cookies `__Host-` de la Sección 12.4), y
 revisar el ancho de tableta (768 px y 1024 px) **redimensionando la ventana**,
 nunca con un `iframe`, porque la app no se deja incrustar (Sección 3). En una
 vista previa, la consola mostrará además que la CSP bloquea la barra de
@@ -238,27 +248,26 @@ herramientas de Vercel (`vercel.live`). Es esperado y no es un fallo de la app.
 
 ## 7. Qué ve un visitante sin sesión
 
-- La única ruta es `/` (más la 404). `next build` lo confirma: `○ /` y
-  `○ /_not-found`, ambas estáticas.
-- Un visitante ve **solo** la pantalla de inicio de sesión con el banner
-  «DATOS SIMULADOS». Las pantallas clínicas son estado de React **sin URL
-  propia**: no se llega a ellas escribiendo una dirección.
-- **Riesgo aceptado hasta la Fase 15:** el login simulado acepta cualquier
-  correo con cualquier contraseña. Cualquiera puede «entrar» y ver pantallas
-  clínicas, siempre con datos evidentemente ficticios
-  (`tests/unit/simulated-data.test.ts`). Lo que protege hoy no es la sesión,
-  sino que no hay datos reales ni API conectada. La autenticación real llega
-  en la Fase 15.
-- Aunque no tengan URL, el **código** de todas las pantallas viaja en el
-  JavaScript que descarga cualquier visitante, como en toda aplicación de
-  página única. Por eso la seguridad de la Fase 15 no puede depender de ocultar
-  pantallas: los datos solo los debe servir la API tras verificar la sesión.
+- Las rutas son `/` (estática), la 404 y las del BFF (`/api/session`,
+  `/api/wake`, `/api/v1/*`), dinámicas.
+- Un visitante ve **solo** la pantalla de inicio de sesión. Las pantallas
+  clínicas son estado de React **sin URL propia**.
+- Sin cookies de sesión, `/api/session` y `/api/v1/*` responden 401. La única
+  ruta del BFF que responde sin sesión es `/api/wake`, que solo consulta
+  `/health` del backend (pública, sin datos).
+- El **código** de todas las pantallas viaja en el JavaScript que descarga
+  cualquier visitante, como en toda aplicación de página única. Por eso
+  ocultar pantallas no es una barrera: los datos solo los sirve la API tras
+  verificar el token y el rol en cada petición.
 
 ## 8. CORS en Render (una vez, tras el primer despliegue verificado)
 
 El backend solo acepta peticiones del navegador desde los orígenes de
 `GYNFEM_CORS_ORIGINS`. Hasta la Fase 14 vale `https://gynfem-frontend.invalid`,
 que cierra CORS (`gynfem-backend/docs/DEPLOYMENT.md`, Sección 7.3).
+
+> **Fase 15:** el navegador ya no llama a la API; lo hace el BFF de servidor
+> a servidor, donde CORS no aplica. `GYNFEM_CORS_ORIGINS` se queda como está.
 
 1. **Cuándo:** con el dominio de producción ya verificado (Sección 6) y antes
    de empezar la Fase 15.
@@ -313,10 +322,170 @@ El paso 1 solo lo puede hacer la cuenta dueña del proyecto en Vercel
 
 | Riesgo | Estado |
 | --- | --- |
-| Login simulado sin autenticación real | Aceptado hasta la Fase 15 (Sección 7) |
-| `'unsafe-inline'` en `script-src` | Aceptado; revisar nonces o SRI en la Fase 15 |
+| Login simulado sin autenticación real | **Cerrado en la Fase 15**: autenticación real con Supabase Auth y RBAC del backend |
+| `'unsafe-inline'` en `script-src` | Aceptado. Revisado en la Fase 15: el token ya no es legible por JavaScript (Sección 3) |
+| Datos clínicos y contraseña en tránsito por las funciones de Vercel | Aceptado con el BFF (Sección 11.1). No se guardan ni se registran (`tests/unit/phase15-guards.test.ts` prohíbe `console.*`). Revisar antes de datos reales (Fase 17) |
+| **Contraseña temporal sin cambio obligatorio** (deuda de seguridad) | **Abierto; a cerrar antes de la Fase 18.** El administrador fija la contraseña al crear la cuenta y el usuario no está obligado a cambiarla ni tiene pantalla para hacerlo. `gynfem-backend/docs/SECURITY.md` §2.3 («Riesgos residuales») asigna ese cambio al frontend (`updateUser`). Quedó fuera de la Fase 15 |
+| Dos pestañas refrescan la sesión a la vez | Aceptado. Supabase rota el *refresh token*; si una pestaña pierde la carrera, pide reingresar sin perder lo escrito |
 | Vistas previas huérfanas tras fusionar | Mitigado por la protección; su borrado es manual (Sección 5) |
 | La versión de Next queda visible en el cliente (`window.next.version`) | Aceptado. Lo publica el propio Next en su código de arranque y no se puede quitar sin parchearlo. Sí se eliminan `X-Powered-By` y la versión en `Server` (Decisión 6) |
 | Una sola persona controla Vercel | Aceptado en Hobby (Sección 1). Configuración, vistas previas e *Instant Rollback* dependen de la cuenta dueña; revertir en `main` no |
 | Hobby es para uso personal y no comercial | Revisar antes de uso clínico real (Fase 17): puede exigir un plan de pago |
 | `next dev` reescribe parte de `CLAUDE.md` | Solo el bloque entre los marcadores `nextjs-agent-rules`; conserva el resto, también con saltos de línea CRLF. Comprobado arrancando `next dev` de verdad con Next 16.3.6, y lo vigila `tests/integration/agent-rules.test.ts` (dos arranques reales). Las reglas del proyecto van fuera de los marcadores. No debe existir `AGENTS.md` (está en `.gitignore` de forma permanente): si existe **con** los marcadores, Next mantiene el bloque allí y deja de actualizar el de `CLAUDE.md` sin avisar; un `AGENTS.md` **sin** marcadores no cambia nada. En ningún caso se tocan las reglas de fuera del bloque. Detalle en la advertencia de `CLAUDE.md` |
+
+## 11. Integración con la API (Fase 15)
+
+### 11.1 Sesión: BFF con cookies httpOnly
+
+El navegador solo habla con su propio origen. Los Route Handlers de `app/api/`
+(lógica en `lib/server/`) reenvían a Supabase Auth y a la API de Render.
+
+| Ruta del BFF | Qué hace |
+| --- | --- |
+| `POST /api/session` | Inicia sesión en Supabase Auth, pregunta el rol a `GET /me` y fija las cookies |
+| `GET /api/session` | Restaura la sesión al recargar: `{id, role, email}` |
+| `DELETE /api/session` | Revoca la sesión en Supabase y borra las cookies |
+| `GET /api/wake` | Despierta el backend (`/health`), sin credenciales |
+| `/api/v1/*` | Reenvía a la API **solo** las rutas de `lib/server/allowed-routes.ts` |
+
+- **Cookies:** `__Host-gf_at` (token de acceso, caduca con él) y `__Host-gf_rt`
+  (refresco, de sesión: se pierde al cerrar el navegador). Ambas `HttpOnly`,
+  `Secure`, `SameSite=Strict`, `Path=/`. En `http://localhost` se llaman
+  `gf_at` y `gf_rt`, sin `Secure`.
+- **El prefijo y `Secure` dependen del protocolo de la petición**
+  (`lib/server/session-cookies.ts`): hay https si `x-forwarded-proto` es
+  `https` (Vercel) o la URL lo es. Van siempre juntos: un navegador rechaza una
+  cookie `__Host-` que no sea `Secure`, y por `http` no enviaría una `Secure`,
+  así que con `npm run start` en local no habría sesión. Por eso en la
+  verificación local se vieron `gf_at`/`gf_rt` sin `Secure`: es lo esperado y
+  no ocurre en producción. En https el BFF **no lee** cookies sin prefijo. Lo
+  fija `tests/server/session-cookies.test.ts`; en Vercel se comprueba a mano
+  (Sección 12.4).
+- **Por qué no en memoria ni en `localStorage`:** un token legible por
+  JavaScript queda al alcance de cualquier script inyectado, y la CSP mantiene
+  `'unsafe-inline'`. Con cookies `httpOnly` no hay token que robar, y la sesión
+  sobrevive a recargar la página.
+- **CSRF:** `SameSite=Strict`, más `Origin` igual al host y la cabecera
+  `X-GynFem-Request` en toda escritura (`lib/server/csrf.ts`).
+- **Refresco:** lo hace el BFF **antes** de reenviar, cuando al token le
+  quedan menos de 60 s. Ninguna petición se repite por un token caducado.
+- **Supabase:** tres llamadas REST con `fetch` y 10 s de límite, sin
+  `supabase-js` (reintenta por su cuenta con esperas que no se pueden acotar).
+- **401:** el BFF borra las cookies y la interfaz pide reingresar **encima**
+  de la pantalla actual, que conserva lo escrito. Si reingresa otro usuario,
+  se descarta.
+- **403:** «No tienes permiso para esta operación», sin decir si el recurso
+  existe.
+
+### 11.2 Tiempos de espera y reintentos
+
+Anclados a las latencias medidas en `gynfem-backend/docs/DEPLOYMENT.md` §7.8 y
+§7.10 (arranque en frío de hasta 53.1 s, ≈0.9 s por transacción, escrituras
+clínicas de 1–3 s).
+
+| Petición | BFF → Render | Navegador → BFF | `maxDuration` | Ancla |
+| --- | --- | --- | --- | --- |
+| Despertar (`/api/wake`) | 70 s | 75 s | 90 s | 53.1 s × 1.3 |
+| Lectura | 15 s | 20 s | 60 s | Peor caso del backend antes de su propio 503: 5 s + 5 s + 5 s |
+| Escritura | 30 s | 35 s | 60 s | El doble de ese peor caso |
+
+- **Arranque en frío.** Al abrir la aplicación se llama a `/api/wake` mientras
+  el usuario escribe sus credenciales. Si tarda más de 2 s se muestra
+  «Iniciando el servicio. Puede tardar hasta un minuto…» como estado, nunca
+  como error. Tras 14 min sin respuestas (Render suspende a los 15), toda
+  petición despierta primero.
+- **Arranque en frío medido desde la interfaz (Fase 15).** Con Render dormido
+  a las 14:47:31 UTC, `/api/wake` tardó **42.59 s** (≈35 s con cronómetro
+  manual), dentro de los 53.1 s medidos en la Fase 12 y de los 70 s de límite.
+  El aviso «Iniciando el servicio» se mostró y no hubo error.
+- **Lecturas** (GET, la búsqueda de pacientes y `/predict`): dos reintentos, a
+  1 s y 3 s, ante fallo de red, espera agotada, 502, 503 o 504.
+- **Escrituras: nunca se reintentan solas.** Ante un 503 no se guardó nada: se
+  conservan los valores y el reintento es manual. Ante un fallo de red o una
+  espera agotada el resultado es desconocido: se dice y se manda a comprobarlo.
+- **Esquema de predicción:** caché en memoria de 10 min. Sin esquema, el
+  formulario no existe: no se evalúa sin rangos. Un 422 en un campo que la
+  interfaz dio por válido invalida la caché.
+- Cada petición lleva un `X-Request-ID` aleatorio, que se muestra como
+  «Código de referencia» en los errores para buscarlo en los logs de Render.
+
+### 11.3 Región de las funciones: `pdx1`
+
+Render está en Oregon y las funciones de Vercel nacieron en `iad1`
+(Washington, D. C.): cada petición cruzaba el país dos veces. `vercel.json`
+fija `"regions": ["pdx1"]` (Portland, Oregon), la región de Vercel junto a
+Render. El plan Hobby admite una sola región. Supabase sigue en São Paulo: ese
+salto lo hace el backend, no el BFF, salvo al iniciar o refrescar la sesión.
+
+Se aplica sola con el primer despliegue de la rama. **Comprobación:** Vercel →
+*Settings → Functions → Function Region* debe mostrar `pdx1`, y en el
+despliegue, *Resources → Functions*, la región `pdx1`.
+
+**Límite de duración.** El plan Hobby admite 300 s por función con Fluid
+Compute (documentación de Vercel, 2026-08-24), activo en este proyecto
+(confirmado en el panel por el responsable). El despertar usa como mucho 90 s.
+
+### 11.4 Requisito para la Fase 16
+
+**Historial, reportes y métricas deben excluir a las pacientes dadas de baja**
+(`deleted_at IS NOT NULL`) y sus mediciones y predicciones. La base de
+producción contiene pacientes sintéticas de verificación dadas de baja
+(Sección 12.3): si un reporte las contara, mezclaría datos de prueba con datos
+reales.
+
+## 12. Verificación extremo a extremo contra producción
+
+Con credenciales: la ejecuta la persona responsable, con las dos cuentas de
+verificación (rol médico y rol administrador). Nunca con datos reales.
+
+### 12.1 Datos sintéticos
+
+| Dato | Valor | Por qué es inequívocamente ficticio |
+| --- | --- | --- |
+| Tipo y número de documento | `PASAPORTE` · `FICTICIOF15` | Un DNI son 8 dígitos y cualquier combinación puede pertenecer a alguien. Este número son letras que dicen «ficticio»: ningún pasaporte se numera así, y el backend lo acepta (4–20 caracteres alfanuméricos) |
+| Nombres y apellidos | `Paciente Ficticia` · `Sintetica Fquince` | Lo declaran en el propio texto. El backend no admite dígitos en un nombre |
+| Usuario de prueba | `usuario.sintetico.f15@gynfem.test` | `.test` es un dominio reservado (RFC 2606) |
+
+### 12.2 Limpieza: baja lógica, nunca borrado físico
+
+La base prohíbe el borrado físico con los triggers `*_forbid_delete`, y **no
+se desactivan**. Tras cada verificación:
+
+- **Pacientes sintéticas:** baja lógica con `DELETE /patients/{id}` desde la
+  propia interfaz («Dar de baja»). Dejan de aparecer en búsquedas y consultas;
+  sus mediciones y predicciones se conservan, inaccesibles por la API.
+- **Usuario sintético:** desactivado desde la interfaz. Ni su perfil ni su
+  cuenta de Supabase se borran.
+- **`audit_log`:** intacto. Sus filas de prueba se identifican por el actor
+  (las cuentas de verificación) y la ventana horaria de la tabla siguiente.
+- El borrado físico con triggers desactivados queda **descartado**, salvo
+  aprobación explícita en una fase posterior.
+
+### 12.3 Registro de datos sintéticos en producción
+
+Una fila por verificación. Los identificadores son UUID opacos.
+
+| Fecha (UTC) | Ventana horaria | Actor | Pacientes sintéticas (id) | Usuario sintético (id) | Estado |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-01 (verificación de la Fase 15, en local contra la API de producción) | 14:00–14:25 | Médica `4f826907-0ff1-4bac-98fa-2d60946e0172` · Administradora `923046e7-a79b-40e7-8ad6-04cc9efbb742` | `1ec61d07-5057-44d2-a698-41d39883f613` (`PASAPORTE` · `FICTICIOF15`), creada 14:06:48; medición de corrección `8f9788bd-a071-4924-ba82-f497df4f2679` | `437aa4ae-ea4c-46ef-97ed-9efaf18cbc10` (`usuario.sintetico.f15@gynfem.test`), creado 14:23:20 | Paciente de baja lógica 14:21:33 (`deleted_at` confirmado por SQL). Usuario desactivado |
+
+En `audit_log`, esa ventana incluye 9 `user.deactivate` y 1 `user.activate`
+sobre el usuario sintético en 23 s: clics repetidos porque la fila no mostraba
+que la petición seguía en curso. Corregido en la Fase 15 (cada fila se bloquea
+mientras dura su escritura y se actualiza con la respuesta del servidor).
+
+### 12.4 Cookies de sesión en Vercel (HTTPS)
+
+La verificación de la Fase 15 se hizo en local por `http`, donde las cookies
+no llevan prefijo ni `Secure` (Sección 11.1). Tras el despliegue de
+producción, con una cuenta de verificación y sin datos nuevos:
+
+1. Iniciar sesión en el dominio de producción.
+2. Herramientas del navegador → *Application → Cookies*: deben existir
+   `__Host-gf_at` y `__Host-gf_rt`, ambas con `HttpOnly`, `Secure`,
+   `SameSite=Strict`, `Path=/` y **sin** `Domain`. No debe existir ninguna
+   `gf_at` ni `gf_rt` sin prefijo.
+3. En la consola, `document.cookie` no las muestra; `localStorage` y
+   `sessionStorage` siguen vacíos.
+4. Recargar la página: la sesión se conserva. Cerrar sesión: ambas cookies
+   desaparecen.

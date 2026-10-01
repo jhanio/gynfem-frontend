@@ -95,15 +95,35 @@ export function isVercelLoginWall(status: number, headers: Headers, body: string
   return /Vercel Authentication|Authentication Required/i.test(body)
 }
 
-// El HTML inicial es el login simulado. Ninguna pantalla clínica se sirve sin sesión.
-const CLINICAL_SCREEN_MARKERS = ["Buscar paciente", "Administración de usuarios", "Evaluación de riesgo", "Ficha de paciente"]
+// El HTML inicial no lleva ninguna pantalla clínica: sin sesión solo se ve el
+// inicio de sesión. Y ya no existe el modo simulado (Fase 15).
+const CLINICAL_SCREEN_MARKERS = ["Buscar paciente", "Administración de usuarios", "Evaluación de riesgo", "Ficha de paciente", "Registrar paciente"]
 
-export function checkSimulatedContent(html: string): Check[] {
+export function checkAnonymousContent(html: string): Check[] {
   const leaked = CLINICAL_SCREEN_MARKERS.filter((marker) => html.includes(marker))
+  const simulated = html.includes("DATOS SIMULADOS")
   return [
-    check("banner DATOS SIMULADOS", html.includes("DATOS SIMULADOS"), html.includes("DATOS SIMULADOS") ? "presente" : "ausente"),
-    check("la raíz sirve el login", html.includes("Iniciar sesión"), html.includes("Iniciar sesión") ? "presente" : "ausente"),
+    check("sin banner de datos simulados", !simulated, simulated ? "presente" : "ausente"),
     check("ninguna pantalla clínica sin sesión", leaked.length === 0, leaked.length === 0 ? "ninguna" : leaked.join(", ")),
+  ]
+}
+
+// Sin cookies de sesión, el BFF responde 401 con el formato uniforme, sin
+// permitir cachés y sin fijar cookies. En local sin variables se admite el 503
+// not_configured.
+export function checkAnonymousSession(path: string, status: number, headers: Headers, body: string, isLocal: boolean): Check[] {
+  let code: unknown = null
+  try {
+    code = (JSON.parse(body) as { error?: { code?: unknown } }).error?.code ?? null
+  } catch {
+    code = null
+  }
+  const rejected = (status === 401 && code === "not_authenticated") || (isLocal && status === 503 && code === "not_configured")
+  const cacheControl = headers.get("cache-control") ?? "ausente"
+  return [
+    check(`${path} sin sesión responde 401 uniforme`, rejected, `${status} ${typeof code === "string" ? code : "sin formato uniforme"}`),
+    check(`${path} no se guarda en cachés`, cacheControl.includes("no-store"), cacheControl),
+    check(`${path} sin sesión no fija cookies`, headers.get("set-cookie") === null, headers.get("set-cookie") === null ? "ninguna" : "fija una cookie"),
   ]
 }
 
