@@ -13,3 +13,16 @@ export function formatDateTime(iso: string): string {
   if (Number.isNaN(date.getTime())) return iso
   return date.toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" })
 }
+
+// Porcentaje con un decimal y coma, para el reporte impreso: con enteros, tres
+// probabilidades que suman 1 pueden sumar 101 %.
+export function formatPercent(probability: number): string {
+  return `${(Math.round(probability * 1000) / 10).toFixed(1).replace(".", ",")} %`
+}
+
+// Para el papel, que no tiene contexto: la fecha dice su zona horaria.
+export function formatDateTimeWithZone(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return date.toLocaleString("es-PE", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "shortOffset" })
+}

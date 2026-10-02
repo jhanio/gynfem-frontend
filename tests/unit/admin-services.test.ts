@@ -73,6 +73,19 @@ describe("reporte de una evaluación (HU009)", () => {
   })
 })
 
+describe("reporte: sin reutilizar resultados", () => {
+  test("dos llamadas seguidas hacen dos peticiones y cada una devuelve su propia respuesta", async () => {
+    let calls = 0
+    server.use(http.post(`*/api/v1/predictions/${PREDICTION_ID}/report`, () => { calls++; return HttpResponse.json({ institution_name: `Centro Ficticio ${calls}` }) }))
+    const first = await reports.generateReport(PREDICTION_ID)
+    const second = await reports.generateReport(PREDICTION_ID)
+    expect(calls).toBe(2)
+    expect(first).toMatchObject({ institution_name: "Centro Ficticio 1" })
+    expect(second).toMatchObject({ institution_name: "Centro Ficticio 2" })
+    expect(second).not.toBe(first)
+  })
+})
+
 describe("métricas del modelo (HU010)", () => {
   test("pide /model/metrics sin ningún parámetro: no existe una vista de solo cifras", async () => {
     let url = ""

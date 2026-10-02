@@ -19,7 +19,7 @@ export function Shell({ session, active, onNavigate, onLogout, children }: Props
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-[#d9e1e5] bg-white">
+      <header className="border-b border-[#d9e1e5] bg-white print:hidden">
         <div className="mx-auto flex max-w-[1200px] items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <button type="button" className="rounded p-1 md:hidden" aria-label="Menú" aria-expanded={isOpen} aria-controls="main-navigation" onClick={() => setIsOpen(!isOpen)}>
@@ -44,7 +44,7 @@ export function Shell({ session, active, onNavigate, onLogout, children }: Props
         </div>
       </header>
       <div className="mx-auto flex max-w-[1200px] md:gap-8">
-        <aside id="main-navigation" className={`${isOpen ? "block" : "hidden"} absolute z-10 w-full border-b border-[#d9e1e5] bg-white p-4 md:static md:block md:w-56 md:border-0 md:bg-transparent md:p-0 md:pt-8`}>
+        <aside id="main-navigation" className={`${isOpen ? "block" : "hidden"} absolute z-10 w-full border-b border-[#d9e1e5] bg-white p-4 md:static md:block md:w-56 md:border-0 md:bg-transparent md:p-0 md:pt-8 print:hidden`}>
           {/* Lo que el rol no puede hacer no se muestra; quien autoriza es el backend. */}
           <nav className="flex flex-col gap-1" aria-label="Navegación principal">
             {session.role === "administrador" ? (
@@ -57,7 +57,7 @@ export function Shell({ session, active, onNavigate, onLogout, children }: Props
             )}
           </nav>
         </aside>
-        <main className="min-w-0 flex-1 px-5 py-8">{children}</main>
+        <main className="min-w-0 flex-1 px-5 py-8 print:p-0">{children}</main>
       </div>
     </div>
   )

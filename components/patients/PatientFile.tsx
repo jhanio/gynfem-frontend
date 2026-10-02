@@ -1,13 +1,15 @@
 "use client"
 
 import { useState } from "react"
+import { flushSync } from "react-dom"
 import { ArrowLeft, FileText } from "lucide-react"
 import { isOutcomeUnknown } from "@/lib/api/errors"
-import type { Measurement, Patient } from "@/lib/api/types"
+import type { Measurement, Patient, Report } from "@/lib/api/types"
 import { type DescribedError, UNKNOWN_OUTCOME_MESSAGE, describeError } from "@/lib/error-messages"
 import { formatDateTime } from "@/lib/format"
 import { deactivatePatient, getPatient } from "@/services/patients"
 import { EvaluationHistory } from "@/components/history/EvaluationHistory"
+import { ReportView } from "@/components/report/ReportView"
 import { ErrorNotice, Loading } from "@/components/ui/Notices"
 import { useLoad } from "@/components/ui/use-load"
 
@@ -26,12 +28,25 @@ const BackButton = ({ onBack }: { onBack: () => void }) => (
   </button>
 )
 
+// El reporte abierto y el botón que lo generó, para devolverle el foco al cerrar.
+type OpenReport = { report: Report; trigger: HTMLElement | null }
+
 // Ficha de la paciente (HU004): sus datos y su historial de evaluaciones (HU008).
+// Un reporte generado (HU009) se muestra en su lugar: vive solo en este estado,
+// nunca en la URL ni en almacenamiento, y se descarta al cerrarlo.
 export function PatientFile({ patientId, onBack, onAssess, onCorrect, onEdit, onDeactivated }: Props) {
   const [isConfirming, setIsConfirming] = useState(false)
   const [isDeactivating, setIsDeactivating] = useState(false)
   const [deactivateError, setDeactivateError] = useState<DescribedError | null>(null)
+  const [openReport, setOpenReport] = useState<OpenReport | null>(null)
   const patient = useLoad(() => getPatient(patientId), `patient:${patientId}`)
+
+  function closeReport() {
+    const trigger = openReport?.trigger
+    // Síncrono: la ficha tiene que volver a ser visible antes de devolverle el foco.
+    flushSync(() => setOpenReport(null))
+    trigger?.focus()
+  }
 
   async function confirmDeactivation() {
     setDeactivateError(null)
@@ -58,6 +73,9 @@ export function PatientFile({ patientId, onBack, onAssess, onCorrect, onEdit, on
   const data = patient.data
   return (
     <>
+      {openReport && <ReportView report={openReport.report} onClose={closeReport} />}
+      {/* Oculta, no desmontada: al cerrar el reporte conserva la página y la fila abierta. */}
+      <div hidden={openReport !== null}>
       <BackButton onBack={onBack} />
       <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
@@ -91,7 +109,8 @@ export function PatientFile({ patientId, onBack, onAssess, onCorrect, onEdit, on
         )}
       </section>
 
-      <EvaluationHistory patientId={patientId} onCorrect={(measurement) => onCorrect(data, measurement)} />
+      <EvaluationHistory patientId={patientId} onCorrect={(measurement) => onCorrect(data, measurement)} onReport={(report, trigger) => setOpenReport({ report, trigger })} />
+      </div>
     </>
   )
 }

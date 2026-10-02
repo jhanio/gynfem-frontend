@@ -1,22 +1,25 @@
 "use client"
 
 import { useState } from "react"
-import type { HistoryItem, Measurement } from "@/lib/api/types"
+import type { HistoryItem, Measurement, Report } from "@/lib/api/types"
 import { fieldLabel } from "@/lib/field-labels"
 import { formatDateTime } from "@/lib/format"
 import { riskLabel } from "@/lib/risk"
 import { listEvaluations } from "@/services/history"
 import { ResultCard } from "@/components/assessment/ResultCard"
+import { GenerateReportButton } from "@/components/report/GenerateReportButton"
 import { ErrorNotice, Loading, Pager } from "@/components/ui/Notices"
 import { useLoad } from "@/components/ui/use-load"
 
-type Props = { patientId: string; onCorrect: (measurement: Measurement) => void }
+type OnReport = (report: Report, trigger: HTMLElement | null) => void
 
-type RowProps = { item: HistoryItem; disclaimer: string; isOpen: boolean; onToggle: () => void; onCorrect: (measurement: Measurement) => void }
+type Props = { patientId: string; onCorrect: (measurement: Measurement) => void; onReport: OnReport }
+
+type RowProps = { item: HistoryItem; disclaimer: string; isOpen: boolean; onToggle: () => void; onCorrect: (measurement: Measurement) => void; onReport: OnReport }
 
 // Una evaluación: su fecha, su riesgo y su estado, siempre con texto. El
 // resultado completo se despliega sin pedir nada: ya vino en la página.
-function EvaluationRow({ item, disclaimer, isOpen, onToggle, onCorrect }: RowProps) {
+function EvaluationRow({ item, disclaimer, isOpen, onToggle, onCorrect, onReport }: RowProps) {
   const { measurement, prediction } = item
   const isCorrected = item.status === "corrected"
   const summaryId = `evaluation-${measurement.id}`
@@ -51,6 +54,8 @@ function EvaluationRow({ item, disclaimer, isOpen, onToggle, onCorrect }: RowPro
               ))}
             </dl>
           </ResultCard>
+          {/* También de una corregida: el médico pudo decidir con ella. */}
+          <GenerateReportButton predictionId={prediction.id} onReport={onReport} />
         </div>
       )}
     </li>
@@ -60,7 +65,7 @@ function EvaluationRow({ item, disclaimer, isOpen, onToggle, onCorrect }: RowPro
 // Historial de evaluaciones de la paciente (HU008): solo lo almacenado, en el
 // orden que da la API y con las corregidas marcadas. No compara evaluaciones
 // entre sí: el backend no respalda ninguna lectura de evolución.
-export function EvaluationHistory({ patientId, onCorrect }: Props) {
+export function EvaluationHistory({ patientId, onCorrect, onReport }: Props) {
   const [offset, setOffset] = useState(0)
   // El tamaño de página lo decide la API (parámetro del sistema). Al paginar se
   // repite el que aplicó, para que un cambio de configuración no desalinee los offsets.
@@ -100,7 +105,7 @@ export function EvaluationHistory({ patientId, onCorrect }: Props) {
                 key={item.measurement.id} item={item} disclaimer={data.clinical_disclaimer}
                 isOpen={openId === item.measurement.id}
                 onToggle={() => setOpenId((current) => (current === item.measurement.id ? null : item.measurement.id))}
-                onCorrect={onCorrect}
+                onCorrect={onCorrect} onReport={onReport}
               />
             ))}
           </ul>
