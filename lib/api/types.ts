@@ -35,7 +35,6 @@ export type PredictionView = {
 
 export type QuickPrediction = PredictionView & { input: ClinicalValues; model_input: ClinicalValues }
 export type StoredPrediction = PredictionView & { id: string }
-export type PredictionDetail = StoredPrediction & { measurement_id: string; input: ClinicalValues; model_input: ClinicalValues }
 
 export type Measurement = { id: string; patient_id: string; measured_at: string } & { [field: string]: number | string }
 export type MeasurementListItem = Measurement & { prediction_id: string | null }

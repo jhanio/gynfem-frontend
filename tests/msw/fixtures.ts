@@ -1,6 +1,6 @@
 // Respuestas de ejemplo con la forma del contrato (gynfem-backend/docs/API_SPEC.md).
 // Todo dato es evidentemente ficticio: el repositorio es público.
-import type { AuditEntry, Evaluation, FieldSchema, MeasurementListItem, ModelMetrics, Patient, PatientSummary, PredictionDetail, PredictionSchema, QuickPrediction, SystemSettings, User } from "@/lib/api/types"
+import type { AuditEntry, Evaluation, EvaluationStatus, FieldSchema, HistoryItem, ModelMetrics, Patient, PatientSummary, PredictionSchema, QuickPrediction, RiskLevel, SystemSettings, User } from "@/lib/api/types"
 
 const limits = (min: number, max: number) => ({ min, max, status: "provisional" as const, rationale: "Provisional, pendiente de validación clínica con GynFem." })
 const field = (name: string, unit: string, hard: [number, number], training: [number, number]): FieldSchema => ({
@@ -81,10 +81,6 @@ export const EVALUATION: Evaluation = {
   },
 }
 
-export const MEASUREMENT_ITEM: MeasurementListItem = { ...EVALUATION.measurement, prediction_id: PREDICTION_ID }
-
-export const PREDICTION_DETAIL: PredictionDetail = { ...EVALUATION.prediction, measurement_id: MEASUREMENT_ID, input: IN_RANGE_VALUES, model_input: IN_RANGE_VALUES }
-
 export const user = (n: number, overrides: Partial<User> = {}): User => ({
   id: `66666666-6666-4666-8666-${String(n).padStart(12, "0")}`,
   email: `usuario.ficticio${n}@gynfem.test`, full_name: `Usuario Ficticio ${["Uno", "Dos", "Tres", "Cuatro", "Cinco", "Seis", "Siete", "Ocho"][n - 1] ?? "Otro"}`,
@@ -102,6 +98,19 @@ export const uniformError = (code: string, message: string, details?: Array<{ lo
 export const SETTINGS: SystemSettings = {
   institution_name: { value: "Centro Ficticio", default: "Centro Ficticio", updated_at: null, updated_by: null },
   history_default_page_size: { value: 3, default: 3, updated_at: null, updated_by: null },
+}
+
+// Una evaluación del historial (§3.7.1). `n` la distingue; la fecha de la medición se da siempre.
+export function historyItem(n: number, options: { measuredAt: string; risk?: RiskLevel; status?: EvaluationStatus; values?: Partial<typeof IN_RANGE_VALUES> }): HistoryItem {
+  const id = (prefix: string) => `${prefix}-0000-4000-8000-${String(n).padStart(12, "0")}`
+  return {
+    measurement: { id: id("a1a1a1a1"), patient_id: PATIENT.id, measured_at: options.measuredAt, ...IN_RANGE_VALUES, ...options.values },
+    prediction: {
+      id: id("b1b1b1b1"), risk_level: options.risk ?? "mid", probabilities: QUICK_PREDICTION.probabilities, extrapolation_warnings: [],
+      model_version: "9.9.9", conversion_schema_version: "1.0.0", predicted_at: "2026-09-29T00:10:47.056192Z",
+    },
+    status: options.status ?? "current",
+  }
 }
 
 export const GENERATED_AT = "2026-10-01T18:30:00.131416Z"

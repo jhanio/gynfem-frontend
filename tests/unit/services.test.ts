@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { server } from "../msw/server"
-import { EVALUATION, IN_RANGE_VALUES, MEASUREMENT_ID, MEDICA, PATIENT, PREDICTION_DETAIL, PREDICTION_ID, QUICK_PREDICTION, SCHEMA, summaryOf, uniformError, user } from "../msw/fixtures"
+import { EVALUATION, IN_RANGE_VALUES, MEASUREMENT_ID, MEDICA, PATIENT, PREDICTION_ID, QUICK_PREDICTION, SCHEMA, summaryOf, uniformError, user } from "../msw/fixtures"
 
 // Los servicios y el cliente guardan estado de módulo (caché del esquema): copia nueva por prueba.
 let schema: typeof import("@/services/prediction-schema")
@@ -167,17 +167,6 @@ describe("evaluaciones", () => {
     server.use(http.post(`*/api/v1/measurements/${MEASUREMENT_ID}/corrections`, () => { called = true; return HttpResponse.json(EVALUATION, { status: 201 }) }))
     await assessments.correctMeasurement(MEASUREMENT_ID, IN_RANGE_VALUES)
     expect(called).toBe(true)
-  })
-
-  test("listar mediciones pagina con limit y offset; la predicción guardada se consulta por id", async () => {
-    let search = ""
-    server.use(
-      http.get(`*/api/v1/patients/${PATIENT.id}/measurements`, ({ request }) => { search = new URL(request.url).search; return HttpResponse.json({ items: [], limit: 20, offset: 20, has_more: false }) }),
-      http.get(`*/api/v1/predictions/${PREDICTION_ID}`, () => HttpResponse.json(PREDICTION_DETAIL)),
-    )
-    await assessments.listMeasurements(PATIENT.id, 20)
-    expect(search).toBe(`?limit=${assessments.MEASUREMENTS_PAGE_SIZE}&offset=20`)
-    await expect(assessments.getPrediction(PREDICTION_ID)).resolves.toEqual(PREDICTION_DETAIL)
   })
 
   test("la evaluación rápida usa /predict, sin paciente", async () => {

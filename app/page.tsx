@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { ensureAwake, setUnauthorizedHandler } from "@/lib/api/client"
 import { isTransient } from "@/lib/api/errors"
-import type { MeasurementListItem, Patient, Session } from "@/lib/api/types"
+import type { Measurement, Patient, Session } from "@/lib/api/types"
 import { logout, restoreSession } from "@/services/session"
 import { AssessmentForm } from "@/components/assessment/AssessmentForm"
 import { PatientFile } from "@/components/patients/PatientFile"
@@ -21,7 +21,7 @@ type Screen =
   | { name: "patient"; patientId: string }
   | { name: "patient-edit"; patient: Patient }
   | { name: "assessment"; patient: Patient }
-  | { name: "correction"; patient: Patient; measurement: MeasurementListItem }
+  | { name: "correction"; patient: Patient; measurement: Measurement }
   | { name: "quick" }
   | { name: "users" }
 

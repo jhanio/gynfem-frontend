@@ -1,7 +1,10 @@
 // BFF simulado para las pruebas de flujo: responde en la frontera /api/* con la
 // forma del contrato. Tiene estado (pacientes, mediciones, usuarios) por prueba.
+// Solo simula las rutas que la interfaz usa: GET /patients/{id}/measurements y
+// GET /predictions/{id} siguen en el BFF real, pero la ficha lee el historial;
+// si la interfaz volviera a pedirlas, la prueba fallaría por petición sin manejador.
 import { http, HttpResponse } from "msw"
-import type { AuditEntry, Evaluation, HistoryItem, MeasurementListItem, ModelMetrics, Patient, PredictionDetail, Report, Session, SystemSettings, User } from "@/lib/api/types"
+import type { AuditEntry, Evaluation, HistoryItem, MeasurementListItem, ModelMetrics, Patient, Report, Session, SystemSettings, User } from "@/lib/api/types"
 import { ADMIN, AUDIT_ENTRIES, DISCLAIMER, GENERATED_AT, MEDICA, MODEL_METRICS, PATIENT, QUICK_PREDICTION, SCHEMA, SETTINGS, WARNED_PREDICTION, summaryOf, uniformError, user } from "./fixtures"
 import { server } from "./server"
 
@@ -15,10 +18,11 @@ export type Bff = {
   session: Session | null
   patients: Map<string, Patient>
   measurements: MeasurementListItem[]
-  predictions: Map<string, PredictionDetail>
   users: User[]
   // Fase 16. Historial y auditoría, de lo más reciente a lo más antiguo.
   evaluations: HistoryItem[]
+  // La cadena de consulta de cada GET del historial, en orden.
+  evaluationQueries: string[]
   settings: SystemSettings
   audit: AuditEntry[]
   metrics: ModelMetrics
@@ -98,9 +102,9 @@ export function mockBff(options: Options = {}): Bff {
     session: options.signedIn ?? null,
     patients: new Map((options.patients ?? [PATIENT]).map((p) => [p.id, p])),
     measurements: [],
-    predictions: new Map(),
     users: options.users ?? Array.from({ length: 8 }, (_, i) => user(i + 1, i === 0 ? { role: "administrador", email: ADMIN.email, id: ADMIN.id } : {})),
     evaluations: options.evaluations ?? [],
+    evaluationQueries: [],
     settings: options.settings ?? SETTINGS,
     audit: options.audit ?? AUDIT_ENTRIES,
     metrics: options.metrics ?? MODEL_METRICS,
@@ -140,7 +144,6 @@ export function mockBff(options: Options = {}): Bff {
       ...bff.evaluations.map((item): HistoryItem => (item.measurement.id === replaces ? { ...item, status: "corrected" } : item)),
     ]
     bff.measurements = [{ ...measurement, prediction_id: prediction.id }, ...bff.measurements]
-    bff.predictions.set(prediction.id, { ...prediction, measurement_id: measurement.id, input: values, model_input: values })
     return { measurement, prediction }
   }
 
@@ -218,13 +221,6 @@ export function mockBff(options: Options = {}): Bff {
       if (denied) return denied
       return bff.patients.delete(String(params.id)) ? new HttpResponse(null, { status: 204 }) : fail(404, "patient_not_found", "Paciente no encontrada.")
     }),
-    http.get("*/api/v1/patients/:id/measurements", ({ request, params }) => {
-      track(request)
-      const denied = guard("medico")
-      if (denied) return denied
-      if (!bff.patients.has(String(params.id))) return fail(404, "patient_not_found", "Paciente no encontrada.")
-      return json({ items: bff.measurements.filter((m) => m.patient_id === params.id), limit: 20, offset: 0, has_more: false })
-    }),
     http.post("*/api/v1/patients/:id/measurements", async ({ request, params }) => {
       track(request)
       const denied = guard("medico")
@@ -241,11 +237,6 @@ export function mockBff(options: Options = {}): Bff {
       const original = bff.measurements.find((m) => m.id === params.id)
       if (!original) return fail(409, "measurement_already_corrected", "Esa medición ya fue corregida.")
       return validation(values) ?? json(store(original.patient_id, values, original.id), 201)
-    }),
-    http.get("*/api/v1/predictions/:id", ({ request, params }) => {
-      track(request)
-      const prediction = bff.predictions.get(String(params.id))
-      return guard("medico") ?? (prediction ? json(prediction) : fail(404, "prediction_not_found", "Predicción no encontrada."))
     }),
 
     http.get("*/api/v1/users", ({ request }) => {
@@ -294,6 +285,7 @@ export function mockBff(options: Options = {}): Bff {
       const denied = guard("medico")
       if (denied) return denied
       if (!bff.patients.has(String(params.id))) return fail(404, "patient_not_found", "Paciente no encontrada.")
+      bff.evaluationQueries.push(new URL(request.url).search)
       const query = new URL(request.url).searchParams
       // Sin `limit` rige el parámetro del sistema; la respuesta dice cuál se aplicó.
       const limit = query.has("limit") ? Number(query.get("limit")) : bff.settings.history_default_page_size.value
