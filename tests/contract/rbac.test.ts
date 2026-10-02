@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest"
 import { ALLOWED_ROUTES, EXCLUDED_FROM_PROXY } from "@/lib/server/allowed-routes"
 
 // Copia versionada de la matriz rol × endpoint de gynfem-backend/docs/API_SPEC.md
-// §3.6 (entre los marcadores matriz-rbac), tomada del commit e606e01 del backend.
+// §3.6 (entre los marcadores matriz-rbac), tomada del commit e6825eb del backend.
 // Al cambiar la matriz en el backend: volver a copiarla aquí y ajustar el BFF.
 const SNAPSHOT = "tests/contract/rbac-matrix.snapshot.md"
 const BACKEND_SPEC = "../gynfem-backend/docs/API_SPEC.md"
@@ -24,9 +24,10 @@ function parseMatrix(markdown: string): Row[] {
 const matrix = parseMatrix(readFileSync(SNAPSHOT, "utf8"))
 
 describe("el BFF reenvía exactamente la matriz del contrato", () => {
-  test("la copia de la matriz se lee de verdad (22 rutas)", () => {
-    expect(matrix).toHaveLength(22)
+  test("la copia de la matriz se lee de verdad (28 rutas)", () => {
+    expect(matrix).toHaveLength(28)
     expect(matrix.map((r) => r.key)).toContain("POST /patients/search")
+    expect(matrix.map((r) => r.key)).toContain("POST /predictions/{prediction_id}/report")
   })
 
   test("rutas permitidas + rutas excluidas con motivo = todas las rutas de la matriz, sin sobrantes", () => {
@@ -52,6 +53,8 @@ describe("el BFF reenvía exactamente la matriz del contrato", () => {
     }
   })
 
+  // El reporte no crea nada clínico, pero cada generación escribe su registro de
+  // auditoría: es una escritura (30 s de espera y nunca se reintenta).
   test("los únicos POST que no escriben son la búsqueda y /predict", () => {
     const readOnlyPosts = ALLOWED_ROUTES.filter((r) => r.method === "POST" && !r.write).map((r) => r.template).sort()
     expect(readOnlyPosts).toEqual(["/patients/search", "/predict"])
