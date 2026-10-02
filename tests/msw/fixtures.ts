@@ -1,6 +1,6 @@
 // Respuestas de ejemplo con la forma del contrato (gynfem-backend/docs/API_SPEC.md).
 // Todo dato es evidentemente ficticio: el repositorio es público.
-import type { Evaluation, FieldSchema, MeasurementListItem, Patient, PatientSummary, PredictionDetail, PredictionSchema, QuickPrediction, User } from "@/lib/api/types"
+import type { AuditEntry, Evaluation, FieldSchema, MeasurementListItem, ModelMetrics, Patient, PatientSummary, PredictionDetail, PredictionSchema, QuickPrediction, SystemSettings, User } from "@/lib/api/types"
 
 const limits = (min: number, max: number) => ({ min, max, status: "provisional" as const, rationale: "Provisional, pendiente de validación clínica con GynFem." })
 const field = (name: string, unit: string, hard: [number, number], training: [number, number]): FieldSchema => ({
@@ -94,3 +94,91 @@ export const user = (n: number, overrides: Partial<User> = {}): User => ({
 
 export const uniformError = (code: string, message: string, details?: Array<{ loc: Array<string | number>; type: string }>) =>
   ({ error: { code, message, request_id: "ref-ficticia-1", ...(details ? { details } : {}) } })
+
+// --- Fase 16 (gynfem-backend/docs/API_SPEC.md §3.7) ---
+
+// Valores de prueba, distintos de los que rigen en producción: la interfaz debe
+// mostrar los que lleguen.
+export const SETTINGS: SystemSettings = {
+  institution_name: { value: "Centro Ficticio", default: "Centro Ficticio", updated_at: null, updated_by: null },
+  history_default_page_size: { value: 3, default: 3, updated_at: null, updated_by: null },
+}
+
+export const GENERATED_AT = "2026-10-01T18:30:00.131416Z"
+
+// Los nueve códigos del contrato, en su orden. La advertencia clínica es el último.
+export const LIMITATION_CODES = [
+  "metrics_scope", "accuracy_meaning", "high_risk_errors", "narrow_training_range", "dataset_not_local",
+  "labels_not_verified", "variant_selection", "low_temperature_band", "clinical_disclaimer",
+]
+
+const limitation = (code: string, n: number) => ({
+  code,
+  title: code === "clinical_disclaimer" ? "Advertencia clínica" : `Limitación ficticia ${n}`,
+  message: code === "clinical_disclaimer" ? DISCLAIMER : `Texto de prueba de la limitación ${n}: qué significa y qué no.`,
+  sources: [`artefacto-ficticio-${n}.json: seccion.de.prueba`],
+})
+
+// Cifras deliberadamente irreales (ningún modelo las tiene): una pantalla que
+// codificara las de producción no pasaría las pruebas.
+export const MODEL_METRICS: ModelMetrics = {
+  model: { model_version: "9.9.9", algorithm: "AlgoritmoFicticio", trained_at: "2026-09-23T12:43:32Z", variant: "variante-de-prueba" },
+  evaluation: { source: "held_out_test", dataset_rows: 750, training_rows: 600, test_size: 0.2, stratified: true },
+  metrics: { accuracy: 0.8533333333333334, f1_macro: 0.8512345678901234, precision_macro: 0.8623456789012345, recall_macro: 0.8498765432109876, high_to_low_errors: 2 },
+  training_ranges: SCHEMA.fields.map((f) => ({
+    feature: f.model_feature, unit: f.model_unit, min: f.training_range_model_units.min, max: f.training_range_model_units.max,
+    clinical_field: f.name, clinical_unit: f.unit, clinical_min: f.training_range.min, clinical_max: f.training_range.max,
+  })),
+  detail: {
+    test_rows: 150,
+    // El orden de las etiquetas no es el de severidad: se lee de aquí.
+    labels: ["high risk", "low risk", "mid risk"],
+    confusion_matrix: [[41, 2, 7], [1, 44, 5], [3, 4, 43]],
+    per_class: {
+      "high risk": { precision: 0.9111111111111111, recall: 0.82, f1: 0.8631578947368421, support: 50 },
+      "low risk": { precision: 0.88, recall: 0.88, f1: 0.88, support: 50 },
+      "mid risk": { precision: 0.7818181818181819, recall: 0.86, f1: 0.819047619047619, support: 50 },
+    },
+    procedure_estimate: {
+      label: "Estimación del procedimiento (validación cruzada anidada)", metric: "f1_macro",
+      mean: 0.8412345678901234, std: 0.0212345678901234, outer_folds: 4, inner_folds: 3,
+      description: "Estimación del procedimiento (validación cruzada anidada): texto de prueba. No es el rendimiento del modelo entregado.",
+    },
+  },
+  detail_unavailable_reason: null,
+  limitations: LIMITATION_CODES.map((code, i) => limitation(code, i + 1)),
+}
+
+// Segunda variante: todas las cifras y el orden de las etiquetas cambian.
+export const MODEL_METRICS_ALT: ModelMetrics = {
+  ...MODEL_METRICS,
+  model: { ...MODEL_METRICS.model, model_version: "8.8.8" },
+  metrics: { accuracy: 0.7266666666666667, f1_macro: 0.7212345678901234, precision_macro: 0.7323456789012345, recall_macro: 0.7198765432109876, high_to_low_errors: 6 },
+  detail: {
+    ...MODEL_METRICS.detail!,
+    labels: ["low risk", "mid risk", "high risk"],
+    confusion_matrix: [[38, 9, 3], [8, 36, 6], [6, 9, 35]],
+  },
+}
+
+const AUDIT_SEED: Array<Pick<AuditEntry, "action" | "entity_type" | "changed_fields">> = [
+  { action: "user.bootstrap_admin", entity_type: "user", changed_fields: null },
+  { action: "user.create", entity_type: "user", changed_fields: null },
+  { action: "patient.create", entity_type: "patient", changed_fields: null },
+  { action: "patient.update", entity_type: "patient", changed_fields: ["given_names"] },
+  { action: "clinical_measurement.create", entity_type: "clinical_measurement", changed_fields: null },
+  { action: "prediction.create", entity_type: "prediction", changed_fields: null },
+]
+
+// 23 registros (más de una página), del más reciente al más antiguo, con horas distintas.
+export const AUDIT_ENTRIES: AuditEntry[] = Array.from({ length: 23 }, (_, i) => {
+  const seed = AUDIT_SEED[i % AUDIT_SEED.length]
+  return {
+    created_at: `2026-09-30T10:${String(i).padStart(2, "0")}:00.000000Z`,
+    actor_user_id: seed.action === "user.bootstrap_admin" ? null : seed.entity_type === "user" ? ADMIN.id : MEDICA.id,
+    action: seed.action, entity_type: seed.entity_type,
+    entity_id: `77777777-7777-4777-8777-${String(i + 1).padStart(12, "0")}`,
+    request_id: `88888888-8888-4888-8888-${String(i + 1).padStart(12, "0")}`,
+    outcome: "success", changed_fields: seed.changed_fields,
+  }
+}).reverse()
