@@ -128,26 +128,51 @@ const limitation = (code: string, n: number) => ({
   sources: [`artefacto-ficticio-${n}.json: seccion.de.prueba`],
 })
 
+// Las cifras que un modelo tendría con esa matriz de confusión (filas: nivel
+// real; columnas: nivel predicho), para que el dato de prueba sea coherente
+// consigo mismo: exactitud, promedios y detalle por clase salen de la matriz.
+function metricsFrom(labels: string[], matrix: number[][]) {
+  const total = matrix.flat().reduce((a, b) => a + b, 0)
+  const perClass = labels.map((_, i) => {
+    const support = matrix[i].reduce((a, b) => a + b, 0)
+    const predicted = matrix.reduce((sum, row) => sum + row[i], 0)
+    const precision = matrix[i][i] / predicted
+    const recall = matrix[i][i] / support
+    return { precision, recall, f1: (2 * precision * recall) / (precision + recall), support }
+  })
+  const mean = (pick: (c: (typeof perClass)[number]) => number) => perClass.reduce((sum, c) => sum + pick(c), 0) / perClass.length
+  return {
+    test_rows: total,
+    per_class: Object.fromEntries(labels.map((label, i) => [label, perClass[i]])),
+    metrics: {
+      accuracy: labels.reduce((sum, _, i) => sum + matrix[i][i], 0) / total,
+      f1_macro: mean((c) => c.f1), precision_macro: mean((c) => c.precision), recall_macro: mean((c) => c.recall),
+      high_to_low_errors: matrix[labels.indexOf("high risk")][labels.indexOf("low risk")],
+    },
+  }
+}
+
+// El orden de las etiquetas no es el de severidad: se lee de la respuesta.
+const LABELS = ["high risk", "low risk", "mid risk"]
+const MATRIX = [[41, 2, 7], [1, 44, 5], [3, 4, 43]]
+const DERIVED = metricsFrom(LABELS, MATRIX)
+const TRAINING_ROWS = 600
+
 // Cifras deliberadamente irreales (ningún modelo las tiene): una pantalla que
 // codificara las de producción no pasaría las pruebas.
 export const MODEL_METRICS: ModelMetrics = {
   model: { model_version: "9.9.9", algorithm: "AlgoritmoFicticio", trained_at: "2026-09-23T12:43:32Z", variant: "variante-de-prueba" },
-  evaluation: { source: "held_out_test", dataset_rows: 750, training_rows: 600, test_size: 0.2, stratified: true },
-  metrics: { accuracy: 0.8533333333333334, f1_macro: 0.8512345678901234, precision_macro: 0.8623456789012345, recall_macro: 0.8498765432109876, high_to_low_errors: 2 },
+  evaluation: { source: "held_out_test", dataset_rows: TRAINING_ROWS + DERIVED.test_rows, training_rows: TRAINING_ROWS, test_size: DERIVED.test_rows / (TRAINING_ROWS + DERIVED.test_rows), stratified: true },
+  metrics: DERIVED.metrics,
   training_ranges: SCHEMA.fields.map((f) => ({
     feature: f.model_feature, unit: f.model_unit, min: f.training_range_model_units.min, max: f.training_range_model_units.max,
     clinical_field: f.name, clinical_unit: f.unit, clinical_min: f.training_range.min, clinical_max: f.training_range.max,
   })),
   detail: {
-    test_rows: 150,
-    // El orden de las etiquetas no es el de severidad: se lee de aquí.
-    labels: ["high risk", "low risk", "mid risk"],
-    confusion_matrix: [[41, 2, 7], [1, 44, 5], [3, 4, 43]],
-    per_class: {
-      "high risk": { precision: 0.9111111111111111, recall: 0.82, f1: 0.8631578947368421, support: 50 },
-      "low risk": { precision: 0.88, recall: 0.88, f1: 0.88, support: 50 },
-      "mid risk": { precision: 0.7818181818181819, recall: 0.86, f1: 0.819047619047619, support: 50 },
-    },
+    test_rows: DERIVED.test_rows,
+    labels: LABELS,
+    confusion_matrix: MATRIX,
+    per_class: DERIVED.per_class,
     procedure_estimate: {
       label: "Estimación del procedimiento (validación cruzada anidada)", metric: "f1_macro",
       mean: 0.8412345678901234, std: 0.0212345678901234, outer_folds: 4, inner_folds: 3,
@@ -158,16 +183,16 @@ export const MODEL_METRICS: ModelMetrics = {
   limitations: LIMITATION_CODES.map((code, i) => limitation(code, i + 1)),
 }
 
-// Segunda variante: todas las cifras y el orden de las etiquetas cambian.
+// Segunda variante: otra matriz y otro orden de etiquetas, así que cambian todas las cifras.
+const ALT_LABELS = ["low risk", "mid risk", "high risk"]
+const ALT_MATRIX = [[38, 9, 3], [8, 36, 6], [6, 9, 35]]
+const ALT_DERIVED = metricsFrom(ALT_LABELS, ALT_MATRIX)
+
 export const MODEL_METRICS_ALT: ModelMetrics = {
   ...MODEL_METRICS,
   model: { ...MODEL_METRICS.model, model_version: "8.8.8" },
-  metrics: { accuracy: 0.7266666666666667, f1_macro: 0.7212345678901234, precision_macro: 0.7323456789012345, recall_macro: 0.7198765432109876, high_to_low_errors: 6 },
-  detail: {
-    ...MODEL_METRICS.detail!,
-    labels: ["low risk", "mid risk", "high risk"],
-    confusion_matrix: [[38, 9, 3], [8, 36, 6], [6, 9, 35]],
-  },
+  metrics: ALT_DERIVED.metrics,
+  detail: { ...MODEL_METRICS.detail!, labels: ALT_LABELS, confusion_matrix: ALT_MATRIX, per_class: ALT_DERIVED.per_class },
 }
 
 const AUDIT_SEED: Array<Pick<AuditEntry, "action" | "entity_type" | "changed_fields">> = [

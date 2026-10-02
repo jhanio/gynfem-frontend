@@ -44,3 +44,22 @@ describe("decisión 5: el reporte solo se genera por una acción explícita", ()
     expect(names.filter((name) => /^(@tanstack\/(react-)?query.*|swr|react-query|@apollo\/client|redux-persist|localforage|idb(-keyval)?)$/.test(name))).toEqual([])
   })
 })
+
+describe("decisión 4: las limitaciones de las métricas no se pueden ocultar", () => {
+  const LIMITATIONS = "components/metrics/Limitations.tsx"
+  const metricsFiles = [...sourceFiles("components/metrics"), "lib/metrics-text.ts"]
+
+  test("el bloque de limitaciones no tiene estado, ni botones, ni nada que lo esconda", () => {
+    expect(existsSync(LIMITATIONS)).toBe(true)
+    expect(code(LIMITATIONS)).not.toMatch(/\b(useState|useReducer|onClick|hidden|aria-hidden)\b/)
+  })
+
+  test("la pantalla de métricas no contiene ninguna cifra propia: todas llegan de la API", () => {
+    expect(metricsFiles.filter(existsSync).length).toBeGreaterThan(3)
+    for (const file of metricsFiles.filter(existsSync)) expect(code(file)).not.toMatch(/\b0\.\d{2,}|\b\d{2,}(,|\.)\d\s?%/)
+  })
+
+  test("un único componente pinta cifras y limitaciones: nadie más usa el servicio de métricas", () => {
+    expect(browserFiles.filter((file) => /\bgetModelMetrics\b/.test(code(file)))).toEqual(["components/metrics/ModelMetrics.tsx"])
+  })
+})

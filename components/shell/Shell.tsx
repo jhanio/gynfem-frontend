@@ -1,10 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { ClipboardList, LogOut, Menu, ShieldCheck, Users, X } from "lucide-react"
+import { ChartColumn, ClipboardList, LogOut, Menu, ShieldCheck, Users, X } from "lucide-react"
 import type { Role, Session } from "@/lib/api/types"
 
-export type NavTarget = "patients" | "quick" | "users"
+export type NavTarget = "patients" | "quick" | "users" | "metrics"
 
 const ROLE_LABEL: Record<Role, string> = { medico: "Médico", administrador: "Administrador" }
 
@@ -48,13 +48,15 @@ export function Shell({ session, active, onNavigate, onLogout, children }: Props
           {/* Lo que el rol no puede hacer no se muestra; quien autoriza es el backend. */}
           <nav className="flex flex-col gap-1" aria-label="Navegación principal">
             {session.role === "administrador" ? (
-              <button type="button" onClick={() => go("users")} className={navClass(true)}><Users className="size-4" />Usuarios</button>
+              <button type="button" onClick={() => go("users")} className={navClass(active === "users")}><Users className="size-4" />Usuarios</button>
             ) : (
               <>
                 <button type="button" onClick={() => go("patients")} className={navClass(active === "patients")}><Users className="size-4" />Pacientes</button>
                 <button type="button" onClick={() => go("quick")} className={navClass(active === "quick")}><ClipboardList className="size-4" />Evaluación rápida</button>
               </>
             )}
+            {/* Sin datos de pacientes: la ven los dos roles (API_SPEC §3.7.3). */}
+            <button type="button" onClick={() => go("metrics")} className={navClass(active === "metrics")}><ChartColumn className="size-4" />Métricas del modelo</button>
           </nav>
         </aside>
         <main className="min-w-0 flex-1 px-5 py-8 print:p-0">{children}</main>

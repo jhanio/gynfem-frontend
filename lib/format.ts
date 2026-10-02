@@ -26,3 +26,9 @@ export function formatDateTimeWithZone(iso: string): string {
   if (Number.isNaN(date.getTime())) return iso
   return date.toLocaleString("es-PE", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "shortOffset" })
 }
+
+// Como formatNumber, con coma decimal: en la pantalla de métricas, donde la
+// prosa de la API escribe las cifras así.
+export function formatDecimal(value: number): string {
+  return formatNumber(value).replace(".", ",")
+}

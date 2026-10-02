@@ -6,6 +6,7 @@ import { isTransient } from "@/lib/api/errors"
 import type { Measurement, Patient, Session } from "@/lib/api/types"
 import { logout, restoreSession } from "@/services/session"
 import { AssessmentForm } from "@/components/assessment/AssessmentForm"
+import { ModelMetrics } from "@/components/metrics/ModelMetrics"
 import { PatientFile } from "@/components/patients/PatientFile"
 import { PatientForm } from "@/components/patients/PatientForm"
 import { PatientSearch } from "@/components/patients/PatientSearch"
@@ -24,6 +25,7 @@ type Screen =
   | { name: "correction"; patient: Patient; measurement: Measurement }
   | { name: "quick" }
   | { name: "users" }
+  | { name: "metrics" }
 
 type Status = "restoring" | "anonymous" | "authenticated"
 
@@ -86,6 +88,8 @@ export default function App() {
 
   function navigate(target: NavTarget) {
     if (!session) return
+    // Las métricas no llevan datos de pacientes: las ven los dos roles.
+    if (target === "metrics") { setScreen({ name: "metrics" }); return }
     if (session.role === "administrador") {
       if (target === "users") setScreen({ name: "users" })
       return
@@ -95,6 +99,7 @@ export default function App() {
   }
 
   function renderScreen(current: Session) {
+    if (screen.name === "metrics") return <ModelMetrics />
     if (current.role === "administrador") return <UserAdministration />
     const toFile = (patientId: string) => setScreen({ name: "patient", patientId })
     const toPatients = () => setScreen({ name: "patients" })
@@ -132,7 +137,7 @@ export default function App() {
       {status === "authenticated" && session && (
         <>
           <div inert={isExpired} key={epoch}>
-            <Shell session={session} active={screen.name === "quick" ? "quick" : screen.name === "users" ? "users" : "patients"} onNavigate={navigate} onLogout={handleLogout}>
+            <Shell session={session} active={screen.name === "quick" || screen.name === "users" || screen.name === "metrics" ? screen.name : "patients"} onNavigate={navigate} onLogout={handleLogout}>
               {renderScreen(session)}
             </Shell>
           </div>
