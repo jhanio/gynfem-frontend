@@ -1,10 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { ChartColumn, ClipboardList, LogOut, Menu, ShieldCheck, Users, X } from "lucide-react"
+import { ChartColumn, ClipboardList, LogOut, Menu, Settings, ShieldCheck, Users, X } from "lucide-react"
 import type { Role, Session } from "@/lib/api/types"
 
-export type NavTarget = "patients" | "quick" | "users" | "metrics"
+export type NavTarget = "patients" | "quick" | "users" | "metrics" | "settings"
 
 const ROLE_LABEL: Record<Role, string> = { medico: "Médico", administrador: "Administrador" }
 
@@ -48,7 +48,10 @@ export function Shell({ session, active, onNavigate, onLogout, children }: Props
           {/* Lo que el rol no puede hacer no se muestra; quien autoriza es el backend. */}
           <nav className="flex flex-col gap-1" aria-label="Navegación principal">
             {session.role === "administrador" ? (
-              <button type="button" onClick={() => go("users")} className={navClass(active === "users")}><Users className="size-4" />Usuarios</button>
+              <>
+                <button type="button" onClick={() => go("users")} className={navClass(active === "users")}><Users className="size-4" />Usuarios</button>
+                <button type="button" onClick={() => go("settings")} className={navClass(active === "settings")}><Settings className="size-4" />Configuración</button>
+              </>
             ) : (
               <>
                 <button type="button" onClick={() => go("patients")} className={navClass(active === "patients")}><Users className="size-4" />Pacientes</button>

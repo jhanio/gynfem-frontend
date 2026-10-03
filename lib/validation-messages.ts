@@ -11,6 +11,8 @@ const MESSAGES = new Map<string, string>([
   ["int_type", "Debe ser un número entero."],
   ["finite_number", "Debe ser un número finito."],
   ["string_type", "Debe ser un texto."],
+  ["institution_name_length", "El nombre no tiene la longitud admitida."],
+  ["control_character", "El nombre no admite caracteres de control, de formato ni separadores de línea."],
   ["extra_forbidden", "Campo no admitido."],
   ["literal_error", "Opción no admitida."],
   ["diastolic_not_below_systolic", "La presión diastólica debe ser menor que la sistólica."],

@@ -118,6 +118,24 @@ describe("métricas (§3.7.3)", () => {
 })
 
 describe("configuración (§3.7.4)", () => {
+  test("el nombre se normaliza con NFC y espacios, y su longitud cuenta puntos de código", async () => {
+    mockBff({ signedIn: ADMIN })
+    const normalized = await settings.updateSettings({ institution_name: "  Cli\u0301nica\u00a0\u00a0Ficticia  " })
+    expect(normalized.institution_name.value).toBe("Clínica Ficticia")
+    const astral = "😀".repeat(100)
+    expect((await settings.updateSettings({ institution_name: astral })).institution_name.value).toBe(astral)
+    await expect(settings.updateSettings({ institution_name: `${astral}😀` })).rejects.toMatchObject({ status: 422, details: [{ loc: ["body", "institution_name"], type: "institution_name_length" }] })
+  })
+
+  test.each(["\tCentro Ficticio", "Centro\ue000Ficticio", "Centro\ud800Ficticio", "Centro\u0378Ficticio", "Centro\u2028Ficticio"])("el mock rechaza categorías Unicode prohibidas antes de recortar", async (institution_name) => {
+    const bff = mockBff({ signedIn: ADMIN })
+    const initial = structuredClone(bff.settings)
+    const auditLength = bff.audit.length
+    await expect(settings.updateSettings({ institution_name })).rejects.toMatchObject({ status: 422, details: [{ loc: ["body", "institution_name"], type: "control_character" }] })
+    expect(bff.settings).toEqual(initial)
+    expect(bff.audit).toHaveLength(auditLength)
+  })
+
   test("solo el administrador; un cambio fija updated_at y updated_by y audita solo el nombre de la clave", async () => {
     const bff = mockBff({ signedIn: MEDICA })
     await expect(settings.getSettings()).rejects.toMatchObject({ status: 403 })

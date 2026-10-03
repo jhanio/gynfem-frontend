@@ -7,6 +7,7 @@ import type { Measurement, Patient, Session } from "@/lib/api/types"
 import { logout, restoreSession } from "@/services/session"
 import { AssessmentForm } from "@/components/assessment/AssessmentForm"
 import { ModelMetrics } from "@/components/metrics/ModelMetrics"
+import { SystemConfiguration } from "@/components/settings/SystemConfiguration"
 import { PatientFile } from "@/components/patients/PatientFile"
 import { PatientForm } from "@/components/patients/PatientForm"
 import { PatientSearch } from "@/components/patients/PatientSearch"
@@ -26,6 +27,7 @@ type Screen =
   | { name: "quick" }
   | { name: "users" }
   | { name: "metrics" }
+  | { name: "settings" }
 
 type Status = "restoring" | "anonymous" | "authenticated"
 
@@ -92,6 +94,7 @@ export default function App() {
     if (target === "metrics") { setScreen({ name: "metrics" }); return }
     if (session.role === "administrador") {
       if (target === "users") setScreen({ name: "users" })
+      if (target === "settings") setScreen({ name: "settings" })
       return
     }
     if (target === "patients") setScreen({ name: "patients" })
@@ -100,7 +103,7 @@ export default function App() {
 
   function renderScreen(current: Session) {
     if (screen.name === "metrics") return <ModelMetrics />
-    if (current.role === "administrador") return <UserAdministration />
+    if (current.role === "administrador") return screen.name === "settings" ? <SystemConfiguration /> : <UserAdministration />
     const toFile = (patientId: string) => setScreen({ name: "patient", patientId })
     const toPatients = () => setScreen({ name: "patients" })
     switch (screen.name) {
@@ -137,7 +140,7 @@ export default function App() {
       {status === "authenticated" && session && (
         <>
           <div inert={isExpired} key={epoch}>
-            <Shell session={session} active={screen.name === "quick" || screen.name === "users" || screen.name === "metrics" ? screen.name : "patients"} onNavigate={navigate} onLogout={handleLogout}>
+            <Shell session={session} active={screen.name === "quick" || screen.name === "users" || screen.name === "metrics" || screen.name === "settings" ? screen.name : "patients"} onNavigate={navigate} onLogout={handleLogout}>
               {renderScreen(session)}
             </Shell>
           </div>

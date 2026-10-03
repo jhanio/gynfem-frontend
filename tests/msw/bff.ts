@@ -61,7 +61,7 @@ function validation(values: Record<string, number>) {
 // Reglas de PATCH /settings (API_SPEC §3.7.4; app/services/settings_catalog.py).
 const PAGE_SIZE_MIN = 1, PAGE_SIZE_MAX = 50, INSTITUTION_NAME_MAX = 100
 // Caracteres de control, de formato (ancho cero, inversión de dirección) y separadores de línea.
-const CONTROL_OR_FORMAT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u
+const CONTROL_OR_FORMAT = /[\p{C}\p{Zl}\p{Zp}]/u
 const SETTING_KEYS = ["institution_name", "history_default_page_size"]
 type Detail = { loc: Array<string | number>; type: string }
 
@@ -77,10 +77,11 @@ function validateSettings(body: Record<string, unknown>): { values: Record<strin
   if ("institution_name" in body) {
     const loc = ["body", "institution_name"]
     const raw = body.institution_name
-    const name = typeof raw === "string" ? raw.normalize("NFC").trim() : null
+    const normalized = typeof raw === "string" ? raw.normalize("NFC") : null
+    const name = normalized?.replace(/\p{Zs}+/gu, " ").trim() ?? null
     if (name === null) details.push({ loc, type: "string_type" })
-    else if (CONTROL_OR_FORMAT.test(name)) details.push({ loc, type: "control_character" })
-    else if (name.length === 0 || name.length > INSTITUTION_NAME_MAX) details.push({ loc, type: "institution_name_length" })
+    else if (CONTROL_OR_FORMAT.test(normalized!)) details.push({ loc, type: "control_character" })
+    else if (Array.from(name).length === 0 || Array.from(name).length > INSTITUTION_NAME_MAX) details.push({ loc, type: "institution_name_length" })
     else values.institution_name = name
   }
   if ("history_default_page_size" in body) {
