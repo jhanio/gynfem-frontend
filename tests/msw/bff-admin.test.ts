@@ -178,6 +178,28 @@ describe("configuración (§3.7.4)", () => {
 })
 
 describe("auditoría (§3.7.5)", () => {
+  test.each([
+    [{ action: "Borrar todo" }, "action", "string_pattern_mismatch"],
+    [{ entity_type: "otra" }, "entity_type", "literal_error"],
+    [{ entity_id: "no-es-uuid" }, "entity_id", "uuid_parsing"],
+    [{ actor_user_id: "no-es-uuid" }, "actor_user_id", "uuid_parsing"],
+    [{ from: "2026-10-03T10:00:00" }, "from", "timezone_aware"],
+    [{ from: "2026-02-30T10:00:00Z" }, "from", "timezone_aware"],
+    [{ to: "2026-10-03T10:00:00+24:00" }, "to", "timezone_aware"],
+  ])("filtro inválido %j da 422 sin modificar auditoría", async (filters, field, type) => {
+    const bff = mockBff({ signedIn: ADMIN })
+    const initial = structuredClone(bff.audit)
+    await expect(audit.listAuditLog(filters, 0)).rejects.toMatchObject({ status: 422, details: [{ loc: ["query", field], type }] })
+    expect(bff.audit).toEqual(initial)
+  })
+
+  test("el mock conserva microsegundos en from inclusivo y to exclusivo", async () => {
+    const bff = mockBff({ signedIn: ADMIN })
+    bff.audit = [{ ...bff.audit[0], created_at: "2026-10-03T10:00:00.000001Z" }, { ...bff.audit[1], created_at: "2026-10-03T10:00:00.000002Z" }]
+    expect((await audit.listAuditLog({ from: "2026-10-03T10:00:00.000001Z", to: "2026-10-03T10:00:00.000002Z" }, 0)).items).toEqual([bff.audit[0]])
+    await expect(audit.listAuditLog({ from: "2026-10-03T10:00:00.000002Z", to: "2026-10-03T10:00:00.000001Z" }, 0)).rejects.toMatchObject({ status: 422, details: [{ loc: ["query"], type: "date_range_inverted" }] })
+  })
+
   test("solo el administrador; cada ítem lleva exactamente las ocho claves, de lo más reciente a lo más antiguo, sin total", async () => {
     const bff = mockBff({ signedIn: MEDICA })
     await expect(audit.listAuditLog({}, 0)).rejects.toMatchObject({ status: 403 })

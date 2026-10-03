@@ -1,10 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { ChartColumn, ClipboardList, LogOut, Menu, Settings, ShieldCheck, Users, X } from "lucide-react"
+import { ChartColumn, ClipboardList, LogOut, Menu, ScrollText, Settings, ShieldCheck, Users, X } from "lucide-react"
 import type { Role, Session } from "@/lib/api/types"
 
-export type NavTarget = "patients" | "quick" | "users" | "metrics" | "settings"
+export type NavTarget = "patients" | "quick" | "users" | "metrics" | "settings" | "audit"
 
 const ROLE_LABEL: Record<Role, string> = { medico: "Médico", administrador: "Administrador" }
 
@@ -51,6 +51,7 @@ export function Shell({ session, active, onNavigate, onLogout, children }: Props
               <>
                 <button type="button" onClick={() => go("users")} className={navClass(active === "users")}><Users className="size-4" />Usuarios</button>
                 <button type="button" onClick={() => go("settings")} className={navClass(active === "settings")}><Settings className="size-4" />Configuración</button>
+                <button type="button" onClick={() => go("audit")} className={navClass(active === "audit")}><ScrollText className="size-4" />Auditoría</button>
               </>
             ) : (
               <>

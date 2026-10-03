@@ -7,6 +7,8 @@ import { http, HttpResponse } from "msw"
 import type { AuditEntry, Evaluation, HistoryItem, MeasurementListItem, ModelMetrics, Patient, Report, Session, SystemSettings, User } from "@/lib/api/types"
 import { ADMIN, AUDIT_ENTRIES, DISCLAIMER, GENERATED_AT, MEDICA, MODEL_METRICS, PATIENT, QUICK_PREDICTION, SCHEMA, SETTINGS, WARNED_PREDICTION, summaryOf, uniformError, user } from "./fixtures"
 import { server } from "./server"
+import { forwardedQuery } from "@/lib/server/query"
+import { auditTime } from "./audit-time"
 
 export const VALID_PASSWORD = "clave-ficticia-valida"
 
@@ -344,15 +346,22 @@ export function mockBff(options: Options = {}): Bff {
       if (denied) return denied
       const query = new URL(request.url).searchParams
       const from = query.get("from"), to = query.get("to")
-      const instant = (value: string) => new Date(value).getTime()
-      if (from && to && instant(from) > instant(to)) {
+      const forwarded = forwardedQuery({ method: "GET", template: "/audit-log", write: false, query: "audit" }, new Request(request.url))
+      if ("invalid" in forwarded) return fail(422, "validation_error", "La solicitud no es válida.", forwarded.invalid)
+      const limit = Number(query.get("limit") ?? 20), offset = Number(query.get("offset") ?? 0)
+      if (limit < 1 || limit > 50) return fail(422, "validation_error", "La solicitud no es válida.", [{ loc: ["query", "limit"], type: limit < 1 ? "greater_than_equal" : "less_than_equal" }])
+      for (const [key, value] of [["from", from], ["to", to]]) {
+        if (value && auditTime(value) === null) return fail(422, "validation_error", "La solicitud no es válida.", [{ loc: ["query", key!], type: "timezone_aware" }])
+      }
+      const fromTime = from ? auditTime(from)! : null, toTime = to ? auditTime(to)! : null
+      if (fromTime !== null && toTime !== null && fromTime > toTime) {
         return fail(422, "validation_error", "La solicitud no es válida.", [{ loc: ["query"], type: "date_range_inverted" }])
       }
-      const equals = (name: "action" | "entity_type" | "entity_id" | "actor_user_id", entry: AuditEntry) => !query.has(name) || entry[name] === query.get(name)
+      const equals = (name: "action" | "entity_type" | "entity_id" | "actor_user_id", entry: AuditEntry) => !query.has(name)
+        || (name === "entity_id" || name === "actor_user_id" ? entry[name]?.toLowerCase() === query.get(name)?.toLowerCase() : entry[name] === query.get(name))
       const all = bff.audit.filter((entry) =>
         equals("action", entry) && equals("entity_type", entry) && equals("entity_id", entry) && equals("actor_user_id", entry)
-        && (!from || instant(entry.created_at) >= instant(from)) && (!to || instant(entry.created_at) < instant(to)))
-      const limit = Number(query.get("limit") ?? 20), offset = Number(query.get("offset") ?? 0)
+        && (fromTime === null || auditTime(entry.created_at)! >= fromTime) && (toTime === null || auditTime(entry.created_at)! < toTime))
       return HttpResponse.json({ items: all.slice(offset, offset + limit), limit, offset, has_more: all.length > offset + limit }, { headers: { "Cache-Control": "no-store" } })
     }),
   )
