@@ -287,9 +287,22 @@ describe("reporte: errores, sin reintento automático", () => {
 describe("reporte: impresión", () => {
   test("«Imprimir o guardar como PDF» llama a window.print una vez y no pide nada", async () => {
     const { bff, user } = await openReport()
+    // El artículo aparece antes de que termine la lectura de sus unidades.
+    // Esperar esa carga separa las peticiones de apertura de las de impresión.
+    const unit = SCHEMA.fields.find((field) => field.name === "temperature_c")!.unit
+    await waitFor(() => expect(within(report()).getByText(fieldLabel("temperature_c"), { selector: "dt" }).nextElementSibling).toHaveTextContent(`${CURRENT.measurement.temperature_c} ${unit}`))
     const print = vi.fn()
     vi.stubGlobal("print", print)
     const before = [...bff.calls]
+    expect(before).toEqual([
+      "GET /api/wake",
+      "GET /api/session",
+      "POST /api/v1/patients/search",
+      `GET /api/v1/patients/${PATIENT.id}`,
+      `GET /api/v1/patients/${PATIENT.id}/evaluations`,
+      reportCall(CURRENT),
+      "GET /api/v1/prediction/schema",
+    ])
     await user.click(within(report()).getByRole("button", { name: "Imprimir o guardar como PDF" }))
     expect(print).toHaveBeenCalledTimes(1)
     expect(bff.calls).toEqual(before)
