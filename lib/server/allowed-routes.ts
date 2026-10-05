@@ -5,11 +5,17 @@
 //
 // `write: false` marca lo que no escribe en la base (también dos POST: la
 // búsqueda, cuyo criterio viaja en el cuerpo, y /predict, sin persistencia).
-export type AllowedRoute = { method: "GET" | "POST" | "PATCH" | "DELETE"; template: string; write: boolean }
+// El reporte sí escribe: cada generación deja su registro de auditoría.
+//
+// `query` dice qué parámetros de URL se reenvían (lib/server/query.ts): por
+// defecto solo la paginación; "none", ninguno; "audit", además los filtros de
+// la auditoría, validados.
+export type AllowedRoute = { method: "GET" | "POST" | "PATCH" | "DELETE"; template: string; write: boolean; query?: "none" | "audit" }
 
 export const ALLOWED_ROUTES: readonly AllowedRoute[] = [
   { method: "POST", template: "/predict", write: false },
   { method: "GET", template: "/prediction/schema", write: false },
+  { method: "GET", template: "/model/metrics", write: false, query: "none" },
   { method: "POST", template: "/patients", write: true },
   { method: "POST", template: "/patients/search", write: false },
   { method: "GET", template: "/patients/{patient_id}", write: false },
@@ -17,14 +23,19 @@ export const ALLOWED_ROUTES: readonly AllowedRoute[] = [
   { method: "DELETE", template: "/patients/{patient_id}", write: true },
   { method: "POST", template: "/patients/{patient_id}/measurements", write: true },
   { method: "GET", template: "/patients/{patient_id}/measurements", write: false },
+  { method: "GET", template: "/patients/{patient_id}/evaluations", write: false },
   { method: "POST", template: "/measurements/{measurement_id}/corrections", write: true },
   { method: "GET", template: "/predictions/{prediction_id}", write: false },
+  { method: "POST", template: "/predictions/{prediction_id}/report", write: true },
   { method: "POST", template: "/users", write: true },
   { method: "GET", template: "/users", write: false },
   { method: "GET", template: "/users/{user_id}", write: false },
   { method: "PATCH", template: "/users/{user_id}", write: true },
   { method: "POST", template: "/users/{user_id}/deactivate", write: true },
   { method: "POST", template: "/users/{user_id}/activate", write: true },
+  { method: "GET", template: "/settings", write: false, query: "none" },
+  { method: "PATCH", template: "/settings", write: true, query: "none" },
+  { method: "GET", template: "/audit-log", write: false, query: "audit" },
 ]
 
 // Rutas de la matriz que el navegador no alcanza a través de /api/v1, y por qué.

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { execSync, spawn } from "node:child_process"
+import { execFileSync, execSync, spawn } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
 import { join, resolve } from "node:path"
@@ -52,6 +52,12 @@ async function startNextDevOnce(dir: string) {
   child.stdout.on("data", (d) => (log += d))
   child.stderr.on("data", (d) => (log += d))
   child.on("exit", (code) => (exitCode = code ?? -1))
+  // `close` llega después de `exit` y del cierre de los streams heredados
+  // por los hijos de Next. Registrar la espera antes de intentar detenerlo.
+  const closed = new Promise<void>((ok, fail) => {
+    child.once("error", fail)
+    child.once("close", () => ok())
+  })
   try {
     const deadline = Date.now() + STARTUP_TIMEOUT_MS
     for (;;) {
@@ -66,14 +72,14 @@ async function startNextDevOnce(dir: string) {
       }
     }
   } finally {
-    if (exitCode === null) {
-      try {
-        if (process.platform === "win32") execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: "ignore" })
-        else process.kill(-child.pid!, "SIGKILL")
-      } catch {
-        // El proceso terminó entre la comprobación y el cierre: no queda nada que detener.
-      }
+    if (child.exitCode === null && child.signalCode === null && child.pid !== undefined) {
+      // Un cierre rechazado debe fallar: no significa que el proceso terminó.
+      // /T detiene también el servidor que el CLI de Next crea con fork.
+      if (process.platform === "win32") execFileSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "pipe" })
+      else process.kill(-child.pid, "SIGKILL")
     }
+    // El segundo arranque y afterAll solo pueden continuar tras el cierre.
+    await closed
   }
 }
 

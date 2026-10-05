@@ -205,12 +205,19 @@ describe("evaluación de una paciente: una sola operación (decisión F)", () =>
     await user.click(patientSubmit())
     await screen.findByRole("heading", { name: "Riesgo Alto" })
     await user.click(screen.getByRole("button", { name: "Volver a la ficha" }))
-    await user.click(await screen.findByRole("button", { name: "Ver resultado" }))
+    // El historial ya dice el riesgo y el estado sin expandir la fila.
+    const row = await within(screen.getByRole("region", { name: "Historial de evaluaciones" })).findByRole("listitem")
+    expect(row).toHaveTextContent("Riesgo Alto")
+    expect(row).toHaveTextContent("Vigente")
+    await user.click(within(row).getByRole("button", { name: "Ver resultado" }))
     const card = (await screen.findByRole("heading", { name: "Riesgo Alto" })).closest("section")!
     expect(card).toHaveTextContent(DISCLAIMER)
     expect(card).toHaveTextContent("Modelo 9.9.9")
     expect(card).toHaveTextContent(/IMC: Valor por encima/)
-    expect(bff.calls.some((c) => c.startsWith("GET /api/v1/predictions/"))).toBe(true)
+    expect(within(card).getByText("IMC").nextElementSibling).toHaveTextContent("32")
+    // Todo llega en la página del historial: ya no hay una petición por fila.
+    expect(bff.calls).toContain(`GET /api/v1/patients/${PATIENT.id}/evaluations`)
+    expect(bff.calls.filter((c) => c.startsWith("GET /api/v1/predictions/") || c === `GET /api/v1/patients/${PATIENT.id}/measurements`)).toEqual([])
   })
 
   test("503 (nada se guardó): conserva los valores y permite reintentar a mano, sin reintento automático", async () => {
@@ -295,9 +302,19 @@ describe("corrección de una medición (HU005: actualizar)", () => {
     await user.click(screen.getByRole("button", { name: "Guardar corrección y recalcular" }))
     expect(await screen.findByRole("heading", { name: "Riesgo Alto" })).toBeInTheDocument()
     expect(bff.calls.filter((c) => /\/measurements\/[^/]+\/corrections$/.test(c))).toHaveLength(1)
-    // La original deja de estar vigente: en la ficha queda una sola evaluación.
+    // La original deja de estar vigente, pero se conserva en el historial, marcada:
+    // solo la corrección se puede volver a corregir.
     await user.click(screen.getByRole("button", { name: "Volver a la ficha" }))
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "Corregir" })).toHaveLength(1))
+    const history = await screen.findByRole("region", { name: "Historial de evaluaciones" })
+    await waitFor(() => expect(within(history).getAllByRole("listitem")).toHaveLength(2))
+    const [correction, original] = within(history).getAllByRole("listitem")
+    expect(correction).toHaveTextContent("Riesgo Alto")
+    expect(correction).toHaveTextContent("Vigente")
+    expect(within(correction).getByRole("button", { name: "Corregir" })).toBeInTheDocument()
+    expect(original).toHaveTextContent("Riesgo Moderado")
+    expect(original).toHaveTextContent("Corregida")
+    expect(within(original).queryByRole("button", { name: "Corregir", hidden: true })).toBeNull()
+    expect(screen.getAllByRole("button", { name: "Corregir" })).toHaveLength(1)
   })
 
   test("si ya fue corregida (409), muestra el mensaje de la API", async () => {

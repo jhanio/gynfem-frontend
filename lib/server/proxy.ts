@@ -6,25 +6,12 @@ import { READ_UPSTREAM_TIMEOUT_MS, WRITE_UPSTREAM_TIMEOUT_MS, callBackend } from
 import { csrfRejection } from "./csrf"
 import { readServerEnv } from "./env"
 import { baseHeaders, csrfRejected, errorResponse, notConfigured, requestIdOf } from "./http"
+import { forwardedQuery } from "./query"
 import { resolveSession } from "./session"
 import { clearedSessionCookies } from "./session-cookies"
 
 // Ningún cuerpo del contrato se acerca a este tamaño.
 const MAX_BODY_BYTES = 16 * 1024
-// Los únicos parámetros de URL del contrato (paginación). Un criterio de
-// búsqueda nunca viaja en la URL (gynfem-backend/docs/API_SPEC.md §3.5).
-const QUERY_PARAMETERS = ["limit", "offset"]
-
-function forwardedQuery(request: Request): string {
-  const incoming = new URL(request.url).searchParams
-  const query = new URLSearchParams()
-  for (const name of QUERY_PARAMETERS) {
-    const value = incoming.get(name)
-    if (value !== null && /^\d{1,6}$/.test(value)) query.set(name, value)
-  }
-  const text = query.toString()
-  return text ? `?${text}` : ""
-}
 
 // Reenvía la respuesta del backend. Un cuerpo que no es JSON (la página de error
 // de un proxy intermedio) nunca llega al navegador.
@@ -46,6 +33,8 @@ export async function proxyToBackend(request: Request, segments: readonly string
   const route = matchRoute(request.method, segments)
   if (!route) return errorResponse(404, "not_found", "Recurso no encontrado.", requestId)
   if (csrfRejection(request)) return csrfRejected(requestId)
+  const forwarded = forwardedQuery(route, request)
+  if ("invalid" in forwarded) return errorResponse(422, "validation_error", "La solicitud no es válida.", requestId, { details: forwarded.invalid })
 
   let body: string | undefined
   if (request.method !== "GET" && request.method !== "DELETE") {
@@ -60,7 +49,7 @@ export async function proxyToBackend(request: Request, segments: readonly string
 
   const result = await callBackend(env, {
     method: request.method,
-    path: `/${segments.join("/")}${forwardedQuery(request)}`,
+    path: `/${segments.join("/")}${forwarded.query}`,
     accessToken: session.accessToken,
     body,
     requestId,

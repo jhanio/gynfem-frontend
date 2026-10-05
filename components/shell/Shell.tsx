@@ -1,10 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { ClipboardList, LogOut, Menu, ShieldCheck, Users, X } from "lucide-react"
+import { ChartColumn, ClipboardList, LogOut, Menu, ScrollText, Settings, ShieldCheck, Users, X } from "lucide-react"
 import type { Role, Session } from "@/lib/api/types"
 
-export type NavTarget = "patients" | "quick" | "users"
+export type NavTarget = "patients" | "quick" | "users" | "metrics" | "settings" | "audit"
 
 const ROLE_LABEL: Record<Role, string> = { medico: "Médico", administrador: "Administrador" }
 
@@ -19,7 +19,7 @@ export function Shell({ session, active, onNavigate, onLogout, children }: Props
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-[#d9e1e5] bg-white">
+      <header className="border-b border-[#d9e1e5] bg-white print:hidden">
         <div className="mx-auto flex max-w-[1200px] items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <button type="button" className="rounded p-1 md:hidden" aria-label="Menú" aria-expanded={isOpen} aria-controls="main-navigation" onClick={() => setIsOpen(!isOpen)}>
@@ -44,20 +44,26 @@ export function Shell({ session, active, onNavigate, onLogout, children }: Props
         </div>
       </header>
       <div className="mx-auto flex max-w-[1200px] md:gap-8">
-        <aside id="main-navigation" className={`${isOpen ? "block" : "hidden"} absolute z-10 w-full border-b border-[#d9e1e5] bg-white p-4 md:static md:block md:w-56 md:border-0 md:bg-transparent md:p-0 md:pt-8`}>
+        <aside id="main-navigation" className={`${isOpen ? "block" : "hidden"} absolute z-10 w-full border-b border-[#d9e1e5] bg-white p-4 md:static md:block md:w-56 md:border-0 md:bg-transparent md:p-0 md:pt-8 print:hidden`}>
           {/* Lo que el rol no puede hacer no se muestra; quien autoriza es el backend. */}
           <nav className="flex flex-col gap-1" aria-label="Navegación principal">
             {session.role === "administrador" ? (
-              <button type="button" onClick={() => go("users")} className={navClass(true)}><Users className="size-4" />Usuarios</button>
+              <>
+                <button type="button" onClick={() => go("users")} className={navClass(active === "users")}><Users className="size-4" />Usuarios</button>
+                <button type="button" onClick={() => go("settings")} className={navClass(active === "settings")}><Settings className="size-4" />Configuración</button>
+                <button type="button" onClick={() => go("audit")} className={navClass(active === "audit")}><ScrollText className="size-4" />Auditoría</button>
+              </>
             ) : (
               <>
                 <button type="button" onClick={() => go("patients")} className={navClass(active === "patients")}><Users className="size-4" />Pacientes</button>
                 <button type="button" onClick={() => go("quick")} className={navClass(active === "quick")}><ClipboardList className="size-4" />Evaluación rápida</button>
               </>
             )}
+            {/* Sin datos de pacientes: la ven los dos roles (API_SPEC §3.7.3). */}
+            <button type="button" onClick={() => go("metrics")} className={navClass(active === "metrics")}><ChartColumn className="size-4" />Métricas del modelo</button>
           </nav>
         </aside>
-        <main className="min-w-0 flex-1 px-5 py-8">{children}</main>
+        <main className="min-w-0 flex-1 px-5 py-8 print:p-0">{children}</main>
       </div>
     </div>
   )

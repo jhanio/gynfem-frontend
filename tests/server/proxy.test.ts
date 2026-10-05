@@ -152,6 +152,128 @@ describe("reenvío al backend", () => {
   })
 })
 
+describe("rutas de administración (Fase 16)", () => {
+  const PREDICTION_ID = "55555555-5555-4555-8555-555555555555"
+  const capture = (path: string) => {
+    const seen = { calls: 0, search: "" }
+    server.use(http.get(`${API}/api/v1${path}`, ({ request }) => { seen.calls++; seen.search = new URL(request.url).search; return HttpResponse.json({ items: [] }) }))
+    return seen
+  }
+
+  test("el signo + de una zona horaria llega al backend como %2B, nunca como + ni como espacio", async () => {
+    const seen = capture("/audit-log")
+    const response = await proxy("GET", "/audit-log?from=2026-10-01T00:00:00%2B00:00&to=2026-10-02T00:00:00Z", { cookies: fresh() })
+    expect(response.status).toBe(200)
+    expect(seen.search).toBe("?from=2026-10-01T00%3A00%3A00%2B00%3A00&to=2026-10-02T00%3A00%3A00Z")
+  })
+
+  test("la auditoría reenvía sus seis filtros y la paginación", async () => {
+    const seen = capture("/audit-log")
+    const query = new URLSearchParams({
+      limit: "20", offset: "40", action: "prediction.report", entity_type: "prediction", entity_id: PREDICTION_ID,
+      actor_user_id: PATIENT_ID, from: "2026-10-01T00:00:00Z", to: "2026-10-02T00:00:00-05:00",
+    })
+    await proxy("GET", `/audit-log?${query}`, { cookies: fresh() })
+    expect(Object.fromEntries(new URLSearchParams(seen.search))).toEqual(Object.fromEntries(query))
+  })
+
+  test.each([
+    ["entity_type=otra", "entity_type"],
+    ["action=Borrar%20todo", "action"],
+    ["entity_id=no-es-un-uuid", "entity_id"],
+    ["actor_user_id=usuario.ficticio", "actor_user_id"],
+    ["from=2026-10-01", "from"],
+    // Un + sin codificar llega como espacio: la fecha deja de ser válida.
+    ["to=2026-10-01T00:00:00+00:00", "to"],
+    ["limit=abc", "limit"],
+  ])("un filtro de auditoría inválido (%s) da 422 sin llamar al backend: descartarlo devolvería filas sin filtrar", async (query, name) => {
+    const seen = capture("/audit-log")
+    const response = await proxy("GET", `/audit-log?${query}`, { cookies: fresh() })
+    expect(response.status).toBe(422)
+    const body = await response.json()
+    expect(body.error.code).toBe("validation_error")
+    expect(body.error.details.map((d: { loc: string[] }) => d.loc)).toEqual([["query", name]])
+    // Como el backend: dice qué campo y qué regla, nunca el valor recibido.
+    expect(JSON.stringify(body)).not.toContain(decodeURIComponent(query.split("=")[1]))
+    expect(seen.calls).toBe(0)
+  })
+
+  test("un parámetro que la auditoría no declara no se reenvía", async () => {
+    const seen = capture("/audit-log")
+    await proxy("GET", "/audit-log?nombre=perez&action=user.create", { cookies: fresh() })
+    expect(seen.search).toBe("?action=user.create")
+  })
+
+  test("/model/metrics no admite parámetros: no se reenvía ninguno", async () => {
+    const seen = capture("/model/metrics")
+    await proxy("GET", "/model/metrics?limit=5&solo_cifras=1", { cookies: fresh() })
+    expect(seen.calls).toBe(1)
+    expect(seen.search).toBe("")
+  })
+
+  test("el historial solo reenvía la paginación, nunca un filtro", async () => {
+    const seen = capture(`/patients/${PATIENT_ID}/evaluations`)
+    await proxy("GET", `/patients/${PATIENT_ID}/evaluations?offset=20&action=x&name=perez`, { cookies: fresh() })
+    expect(seen.search).toBe("?offset=20")
+  })
+
+  test.each([
+    ["GET", `/predictions/${PREDICTION_ID}/report`],
+    ["POST", "/predictions/no-es-un-uuid/report"],
+    ["POST", "/audit-log"],
+    ["DELETE", "/audit-log"],
+    ["POST", "/settings"],
+    ["DELETE", "/settings"],
+    ["POST", "/model/metrics"],
+  ])("%s %s no está en la lista: 404 sin llamar al backend", async (method, path) => {
+    const response = await proxy(method, path, { cookies: fresh(), body: method === "POST" ? {} : undefined })
+    expect(response.status).toBe(404)
+    expect(await errorCode(response)).toBe("not_found")
+  })
+
+  test("el reporte es un POST sin cuerpo y su respuesta lleva Cache-Control: no-store", async () => {
+    let body: string | null = null
+    server.use(http.post(`${API}/api/v1/predictions/${PREDICTION_ID}/report`, async ({ request }) => { body = await request.text(); return HttpResponse.json({ institution_name: "Centro Ficticio" }) }))
+    const response = await proxy("POST", `/predictions/${PREDICTION_ID}/report`, { cookies: fresh() })
+    expect(response.status).toBe(200)
+    expect(body).toBe("")
+    expect(response.headers.get("cache-control")).toBe("no-store")
+  })
+
+  test("el reporte sin la cabecera propia responde 403 csrf_rejected sin llamar al backend", async () => {
+    const response = await proxy("POST", `/predictions/${PREDICTION_ID}/report`, { cookies: fresh(), csrf: false })
+    expect(response.status).toBe(403)
+    expect(await errorCode(response)).toBe("csrf_rejected")
+  })
+
+  test("si el reporte agota los 30 s de una escritura, 504 y una sola llamada: nunca se repite", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let calls = 0
+    server.use(http.post(`${API}/api/v1/predictions/${PREDICTION_ID}/report`, async () => { calls++; await delay("infinite"); return HttpResponse.json({}) }))
+    let settled = false
+    const pending = proxy("POST", `/predictions/${PREDICTION_ID}/report`, { cookies: fresh() }).finally(() => { settled = true })
+    // Pasado el tiempo de una lectura sigue esperando: se trata como escritura.
+    await vi.advanceTimersByTimeAsync(READ_UPSTREAM_TIMEOUT_MS + 1000)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(WRITE_UPSTREAM_TIMEOUT_MS)
+    const response = await pending
+    expect(response.status).toBe(504)
+    expect(await errorCode(response)).toBe("upstream_timeout")
+    expect(calls).toBe(1)
+  })
+
+  test("PATCH /settings reenvía el cuerpo, y la auditoría responde con no-store", async () => {
+    let body: unknown
+    server.use(
+      http.patch(`${API}/api/v1/settings`, async ({ request }) => { body = await request.json(); return HttpResponse.json({}) }),
+      http.get(`${API}/api/v1/audit-log`, () => HttpResponse.json({ items: [] })),
+    )
+    expect((await proxy("PATCH", "/settings", { cookies: fresh(), body: { institution_name: "Centro Ficticio" } })).status).toBe(200)
+    expect(body).toEqual({ institution_name: "Centro Ficticio" })
+    expect((await proxy("GET", "/audit-log", { cookies: fresh() })).headers.get("cache-control")).toBe("no-store")
+  })
+})
+
 describe("refresco de la sesión en el servidor, antes de reenviar", () => {
   const refreshHandler = (newAccess: string, seen: { refresh?: unknown }) =>
     http.post(`${SUPABASE}/auth/v1/token`, async ({ request }) => {

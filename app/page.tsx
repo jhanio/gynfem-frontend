@@ -3,9 +3,12 @@
 import { useEffect, useState } from "react"
 import { ensureAwake, setUnauthorizedHandler } from "@/lib/api/client"
 import { isTransient } from "@/lib/api/errors"
-import type { MeasurementListItem, Patient, Session } from "@/lib/api/types"
+import type { Measurement, Patient, Session } from "@/lib/api/types"
 import { logout, restoreSession } from "@/services/session"
 import { AssessmentForm } from "@/components/assessment/AssessmentForm"
+import { AuditLog } from "@/components/audit/AuditLog"
+import { ModelMetrics } from "@/components/metrics/ModelMetrics"
+import { SystemConfiguration } from "@/components/settings/SystemConfiguration"
 import { PatientFile } from "@/components/patients/PatientFile"
 import { PatientForm } from "@/components/patients/PatientForm"
 import { PatientSearch } from "@/components/patients/PatientSearch"
@@ -21,9 +24,12 @@ type Screen =
   | { name: "patient"; patientId: string }
   | { name: "patient-edit"; patient: Patient }
   | { name: "assessment"; patient: Patient }
-  | { name: "correction"; patient: Patient; measurement: MeasurementListItem }
+  | { name: "correction"; patient: Patient; measurement: Measurement }
   | { name: "quick" }
   | { name: "users" }
+  | { name: "metrics" }
+  | { name: "settings" }
+  | { name: "audit" }
 
 type Status = "restoring" | "anonymous" | "authenticated"
 
@@ -86,8 +92,12 @@ export default function App() {
 
   function navigate(target: NavTarget) {
     if (!session) return
+    // Las métricas no llevan datos de pacientes: las ven los dos roles.
+    if (target === "metrics") { setScreen({ name: "metrics" }); return }
     if (session.role === "administrador") {
       if (target === "users") setScreen({ name: "users" })
+      if (target === "settings") setScreen({ name: "settings" })
+      if (target === "audit") setScreen({ name: "audit" })
       return
     }
     if (target === "patients") setScreen({ name: "patients" })
@@ -95,7 +105,11 @@ export default function App() {
   }
 
   function renderScreen(current: Session) {
-    if (current.role === "administrador") return <UserAdministration />
+    if (screen.name === "metrics") return <ModelMetrics />
+    if (current.role === "administrador") {
+      if (screen.name === "audit") return <AuditLog />
+      return screen.name === "settings" ? <SystemConfiguration /> : <UserAdministration />
+    }
     const toFile = (patientId: string) => setScreen({ name: "patient", patientId })
     const toPatients = () => setScreen({ name: "patients" })
     switch (screen.name) {
@@ -132,7 +146,7 @@ export default function App() {
       {status === "authenticated" && session && (
         <>
           <div inert={isExpired} key={epoch}>
-            <Shell session={session} active={screen.name === "quick" ? "quick" : screen.name === "users" ? "users" : "patients"} onNavigate={navigate} onLogout={handleLogout}>
+            <Shell session={session} active={screen.name === "quick" || screen.name === "users" || screen.name === "metrics" || screen.name === "settings" || screen.name === "audit" ? screen.name : "patients"} onNavigate={navigate} onLogout={handleLogout}>
               {renderScreen(session)}
             </Shell>
           </div>

@@ -20,3 +20,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   .page-title { margin: 0; color: var(--foreground); font-size: 28px; font-weight: 700; line-height: 1.2; }
   .muted { margin: 8px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 }
+
+/* Impresión del reporte de una evaluación (HU009): «Imprimir → Guardar como PDF». */
+@media print {
+  @page { size: A4; margin: 18mm; }
+  html, body { background: white; }
+  .report { max-width: none; padding: 0; color: black; }
+  .report-block { break-inside: avoid; }
+}

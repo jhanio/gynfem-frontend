@@ -3,7 +3,7 @@
 import { useRef, useState } from "react"
 import { AlertCircle, ArrowLeft, TriangleAlert } from "lucide-react"
 import { ApiError, isOutcomeUnknown, splitValidation } from "@/lib/api/errors"
-import type { MeasurementListItem, Patient, PredictionView } from "@/lib/api/types"
+import type { Measurement, Patient, PredictionView } from "@/lib/api/types"
 import { canSubmitAssessment, getFieldStatus, hasPressureConflict, toClinicalValues } from "@/lib/clinical-validation"
 import { type DescribedError, UNKNOWN_OUTCOME_MESSAGE, describeError } from "@/lib/error-messages"
 import { fieldLabel } from "@/lib/field-labels"
@@ -17,7 +17,7 @@ import { ResultCard } from "./ResultCard"
 export type AssessmentMode =
   | { kind: "quick" }
   | { kind: "patient"; patient: Patient }
-  | { kind: "correction"; patient: Patient; measurement: MeasurementListItem }
+  | { kind: "correction"; patient: Patient; measurement: Measurement }
 
 type Props = { mode: AssessmentMode; onBackToFile: () => void; onBackToPatients: () => void }
 
