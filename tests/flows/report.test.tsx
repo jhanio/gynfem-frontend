@@ -37,6 +37,19 @@ const generateButton = () => within(history()).getByRole("button", { name: /Gene
 const report = () => screen.getByRole("article", { name: REPORT_TITLE })
 const queryReport = () => screen.queryByRole("article", { name: REPORT_TITLE })
 const reportCalls = (calls: string[]) => calls.filter((call) => call.endsWith("/report"))
+const NO_UNITS = /Las unidades no están disponibles/
+
+// El artículo aparece antes de que termine la lectura de sus unidades
+// (GET /prediction/schema, que ReportView pide al montarse). Toda prueba que
+// abre el reporte espera a que esa lectura termine —con la unidad a la vista
+// (el término lleva solo la etiqueta) o con la nota de que faltan— para no
+// contarla entre las peticiones de otra acción ni dejarla en vuelo hacia la
+// prueba siguiente, donde consumiría sus manejadores.
+async function findSettledReport() {
+  const paper = await screen.findByRole("article", { name: REPORT_TITLE })
+  await waitFor(() => expect(within(paper).queryByText(fieldLabel("temperature_c"), { selector: "dt" }) ?? within(paper).queryByText(NO_UNITS)).toBeInTheDocument())
+  return paper
+}
 
 async function openFile(options: Parameters<typeof mockBff>[0] = {}, row = 0) {
   const bff = mockBff({ signedIn: MEDICA, evaluations: [CURRENT, CORRECTED], ...options })
@@ -50,7 +63,7 @@ async function openFile(options: Parameters<typeof mockBff>[0] = {}, row = 0) {
 async function openReport(options: Parameters<typeof mockBff>[0] = {}, row = 0) {
   const opened = await openFile(options, row)
   await opened.user.click(generateButton())
-  await screen.findByRole("article", { name: REPORT_TITLE })
+  await findSettledReport()
   return opened
 }
 
@@ -87,7 +100,7 @@ describe("reporte: solo por una acción explícita del médico", () => {
     await user.click(button)
     await user.click(button)
     expect(button).toHaveAttribute("aria-disabled", "true")
-    await screen.findByRole("article", { name: REPORT_TITLE })
+    await findSettledReport()
     expect(calls).toBe(1)
   })
 
@@ -120,7 +133,7 @@ describe("reporte: solo por una acción explícita del médico", () => {
     await user.click(within(report()).getByRole("button", { name: "Cerrar" }))
     expect(rows()[0]).toHaveTextContent(AUDIT_NOTICE)
     await user.click(generateButton())
-    await screen.findByRole("article", { name: REPORT_TITLE })
+    await findSettledReport()
     expect(reportCalls(bff.calls)).toEqual([reportCall(CURRENT), reportCall(CURRENT)])
     expect(audited()).toHaveLength(2)
   })
@@ -133,15 +146,17 @@ describe("reporte: solo por una acción explícita del médico", () => {
 
   test("si la sesión expira con el reporte abierto y reingresa el mismo usuario, el reporte sigue ahí y no se regenera", async () => {
     const bff = mockBff({ signedIn: MEDICA, evaluations: [CURRENT] })
-    // La lectura de unidades del reporte encuentra la sesión caída.
-    server.use(http.get("*/api/v1/prediction/schema", () => { bff.session = null; return unauthorized() }, { once: true }))
     const user = await renderApp()
     await openPatientFile(user)
     await user.click(await within(history()).findByRole("button", { name: "Ver resultado" }))
+    // La lectura de unidades del reporte encuentra la sesión caída. Se registra
+    // justo antes del clic que la provoca: ninguna otra lectura puede consumirlo.
+    server.use(http.get("*/api/v1/prediction/schema", () => { bff.session = null; return unauthorized() }, { once: true }))
     await user.click(generateButton())
     const dialog = await screen.findByRole("dialog", { name: "Tu sesión expiró" })
     await loginAs(user, MEDICA)
     await waitFor(() => expect(dialog).not.toBeInTheDocument())
+    await findSettledReport()
     expect(report()).toHaveTextContent(PATIENT.document_number)
     expect(reportCalls(bff.calls)).toHaveLength(1)
   })
@@ -287,10 +302,8 @@ describe("reporte: errores, sin reintento automático", () => {
 describe("reporte: impresión", () => {
   test("«Imprimir o guardar como PDF» llama a window.print una vez y no pide nada", async () => {
     const { bff, user } = await openReport()
-    // El artículo aparece antes de que termine la lectura de sus unidades.
-    // Esperar esa carga separa las peticiones de apertura de las de impresión.
     const unit = SCHEMA.fields.find((field) => field.name === "temperature_c")!.unit
-    await waitFor(() => expect(within(report()).getByText(fieldLabel("temperature_c"), { selector: "dt" }).nextElementSibling).toHaveTextContent(`${CURRENT.measurement.temperature_c} ${unit}`))
+    expect(within(report()).getByText(fieldLabel("temperature_c"), { selector: "dt" }).nextElementSibling).toHaveTextContent(`${CURRENT.measurement.temperature_c} ${unit}`)
     const print = vi.fn()
     vi.stubGlobal("print", print)
     const before = [...bff.calls]
@@ -337,7 +350,7 @@ describe("reporte: no deja rastro en el navegador", () => {
     const push = vi.spyOn(window.history, "pushState")
     const replace = vi.spyOn(window.history, "replaceState")
     await user.click(generateButton())
-    await screen.findByRole("article", { name: REPORT_TITLE })
+    await findSettledReport()
     expect(window.location.href).toBe(href)
     await user.click(within(report()).getByRole("button", { name: "Cerrar" }))
     expect(window.location.href).toBe(href)
