@@ -11,6 +11,12 @@ import { defineConfig } from "vitest/config"
 // cuántas CPU hay: el límite nunca supera las disponibles menos una, que es el
 // valor por defecto de Vitest, así que allí no puede aumentar la concurrencia.
 const MAX_TEST_WORKERS = 4
+// Fase 17: --coverage activa el perfilado preciso de V8 en cada proceso.
+// Con 4 se reprodujeron fallos migrantes; con 2 pasó la suite completa y el
+// pico de memoria del árbol de prueba bajó de 1763 a 1040 MiB. La ejecución
+// normal conserva su límite de 4 y ambas respetan las CPU disponibles.
+const MAX_COVERAGE_WORKERS = 2
+const workerLimit = process.argv.includes("--coverage") ? MAX_COVERAGE_WORKERS : MAX_TEST_WORKERS
 
 export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./", import.meta.url)) } },
@@ -19,7 +25,7 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.{ts,tsx}"],
     testTimeout: 10_000,
-    maxWorkers: Math.max(1, Math.min(MAX_TEST_WORKERS, availableParallelism() - 1)),
+    maxWorkers: Math.max(1, Math.min(workerLimit, availableParallelism() - 1)),
     coverage: {
       provider: "v8",
       include: ["services/**", "lib/**"],
